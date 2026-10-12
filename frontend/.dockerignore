@@ -1,0 +1,13 @@
+node_modules
+dist
+coverage
+.vite
+*.local
+Dockerfile
+.dockerignore
+screenshots
+
+# Playwright artefacts (contain live refresh tokens)
+e2e/.auth
+e2e/test-results
+e2e/playwright-report

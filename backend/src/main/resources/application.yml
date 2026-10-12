@@ -1,0 +1,289 @@
+# All environment-specific values and every secret come from environment variables.
+# Defaults below are for local development only (docker-compose provides real values).
+spring:
+  application:
+    name: pgms-backend
+  threads:
+    virtual:
+      enabled: false
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/pgms}
+    username: ${DB_USERNAME:pgms_app}
+    password: ${DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+      minimum-idle: 5
+      connection-timeout: 5000
+      # bound every row-lock wait (bed/invoice/tenant locks) instead of letting requests pile up
+      connection-init-sql: "SET lock_timeout = '5s'; SET statement_timeout = '30s'"
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL:false}
+      # fail fast: a slow/dead Redis must not stall API requests
+      timeout: 500ms
+      connect-timeout: 1s
+  cache:
+    type: redis
+  data.web.pageable:
+    default-page-size: 20
+    max-page-size: 100
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+  mvc:
+    problemdetails:
+      enabled: false
+  # SMTP. The mail sender only exists when SPRING_MAIL_HOST is set (Mailpit locally: host mailpit, port 1025, no
+  # auth/TLS; SES: SPRING_MAIL_HOST/PORT/USERNAME/PASSWORD + the auth/STARTTLS switches below set to true).
+  mail:
+    default-encoding: UTF-8
+    properties:
+      "[mail.smtp.auth]": ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:false}
+      "[mail.smtp.starttls.enable]": ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:false}
+      "[mail.smtp.starttls.required]": ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED:false}
+      "[mail.smtp.connectiontimeout]": ${APP_MAIL_CONNECT_TIMEOUT_MS:5000}
+      "[mail.smtp.timeout]": ${APP_MAIL_READ_TIMEOUT_MS:10000}
+      "[mail.smtp.writetimeout]": ${APP_MAIL_WRITE_TIMEOUT_MS:10000}
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  forward-headers-strategy: native
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+      group:
+        # readiness = can serve traffic: needs PostgreSQL, deliberately NOT Redis (the app degrades gracefully)
+        readiness:
+          include: readinessState,db
+        liveness:
+          include: livenessState
+  health:
+    redis:
+      enabled: true
+    # an SMTP outage only delays the outbox; it must not mark the API unhealthy
+    mail:
+      enabled: ${MANAGEMENT_HEALTH_MAIL_ENABLED:false}
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    # real latency histograms -> p95/p99 in Grafana and the PgmsHighP95Latency alert
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: PG Management & Operations Platform
+    version: "@project.version@"
+
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:true}
+  swagger-ui:
+    enabled: ${API_DOCS_ENABLED:true}
+    operations-sorter: method
+    tags-sorter: alpha
+
+app:
+  business-timezone: ${APP_TIMEZONE:Asia/Kolkata}
+  security:
+    cors-allowed-origins: ${APP_CORS_ORIGINS:http://localhost:3000}
+    jwt:
+      issuer: ${APP_JWT_ISSUER:pgms-auth}
+      audience: ${APP_JWT_AUDIENCE:pgms-api}
+      access-token-ttl: ${APP_JWT_ACCESS_TTL:15m}
+      refresh-token-ttl: ${APP_JWT_REFRESH_TTL:14d}
+      private-key: ${APP_JWT_PRIVATE_KEY:}
+      public-key: ${APP_JWT_PUBLIC_KEY:}
+      key-id: ${APP_JWT_KEY_ID:pgms-key-1}
+      allow-ephemeral-keys: ${APP_JWT_ALLOW_EPHEMERAL_KEYS:false}
+    rate-limit:
+      enabled: ${APP_RATE_LIMIT_ENABLED:true}
+      auth-requests-per-window: ${APP_AUTH_RATE_LIMIT:20}
+      auth-window: 1m
+    password-reset:
+      code-ttl: ${APP_PASSWORD_RESET_CODE_TTL:10m}
+      setup-code-ttl: ${APP_PORTAL_SETUP_CODE_TTL:72h}
+      max-attempts: 5
+      rate-limit-enabled: ${APP_PASSWORD_RESET_RATE_LIMIT_ENABLED:true}
+      # per window: "forgot" requests per identifier / per client IP, and "reset" (code checks) per client IP
+      requests-per-identifier: ${APP_PASSWORD_RESET_PER_IDENTIFIER:3}
+      requests-per-ip: ${APP_PASSWORD_RESET_PER_IP:10}
+      verifications-per-ip: ${APP_PASSWORD_RESET_VERIFY_PER_IP:20}
+      window: 15m
+      retention: 7d
+  booking:
+    reservation-hold: ${APP_RESERVATION_HOLD:48h}
+  billing:
+    due-reminder-days-before: 3
+    currency: INR
+  notifications:
+    dispatch-batch-size: 50
+    max-attempts: 5
+    dispatch-lease: ${APP_NOTIFICATIONS_DISPATCH_LEASE:5m}
+    portal-url: ${APP_PORTAL_URL:http://localhost:3000}
+    email:
+      provider: ${APP_NOTIFICATIONS_EMAIL_PROVIDER:log}
+      from: ${APP_MAIL_FROM:no-reply@pgms.local}
+      from-name: ${APP_MAIL_FROM_NAME:PG Manager}
+      reply-to: ${APP_MAIL_REPLY_TO:}
+      brand-name: ${APP_BRAND_NAME:PG Manager}
+    sms:
+      provider: ${APP_NOTIFICATIONS_SMS_PROVIDER:log}
+      default-country-code: ${APP_SMS_DEFAULT_COUNTRY_CODE:91}
+      # the log provider prints the rendered text (incl. one-time codes) only when this is true - dev only
+      log-content: ${APP_SMS_LOG_CONTENT:false}
+      # DLT variables are limited to 30 characters
+      max-variable-length: 30
+      connect-timeout: 3s
+      read-timeout: 10s
+      twilio:
+        base-url: ${APP_TWILIO_BASE_URL:https://api.twilio.com}
+        account-sid: ${APP_TWILIO_ACCOUNT_SID:}
+        auth-token: ${APP_TWILIO_AUTH_TOKEN:}
+        from-number: ${APP_TWILIO_FROM_NUMBER:}
+        messaging-service-sid: ${APP_TWILIO_MESSAGING_SERVICE_SID:}
+      msg91:
+        base-url: ${APP_MSG91_BASE_URL:https://control.msg91.com}
+        auth-key: ${APP_MSG91_AUTH_KEY:}
+        sender-id: ${APP_MSG91_SENDER_ID:}
+      # Fixed (DLT-registered) templates. {pg} = organization name and {name} = recipient name are always available.
+      # A type without a template never produces SMS. Text is plain GSM-7 (Rs. instead of the rupee sign) to stay
+      # within one 160-character segment.
+      templates:
+        BOOKING_CONFIRMED:
+          dlt-template-id: ${SMS_DLT_BOOKING_CONFIRMED:}
+          text: "{pg}: Bed reserved, ref {ref}. Check-in {date}. Held till {until}."
+        BOOKING_RELEASED:
+          dlt-template-id: ${SMS_DLT_BOOKING_RELEASED:}
+          text: "{pg}: Your reservation {ref} has {outcome}. Contact us to book again."
+        MOVE_IN:
+          dlt-template-id: ${SMS_DLT_MOVE_IN:}
+          text: "Welcome to {pg}, {name}! Checked in on {date}. Invoices and requests are in your tenant portal."
+        MOVE_OUT:
+          dlt-template-id: ${SMS_DLT_MOVE_OUT:}
+          text: "{pg}: Check-out completed on {date}. Thank you for staying with us."
+        ROOM_TRANSFER:
+          dlt-template-id: ${SMS_DLT_ROOM_TRANSFER:}
+          text: "{pg}: You have been moved to a new bed from {date}."
+        INVOICE_ISSUED:
+          dlt-template-id: ${SMS_DLT_INVOICE_ISSUED:}
+          text: "{pg}: Invoice {inv} for Rs.{amt} is due on {date}. Pay via your tenant portal."
+        PAYMENT_DUE:
+          dlt-template-id: ${SMS_DLT_PAYMENT_DUE:}
+          text: "{pg}: Reminder - Rs.{amt} due on {date} for invoice {inv}."
+        PAYMENT_OVERDUE:
+          dlt-template-id: ${SMS_DLT_PAYMENT_OVERDUE:}
+          text: "{pg}: Rs.{amt} on invoice {inv} was due on {date} and is overdue. Please pay now."
+        PAYMENT_RECEIVED:
+          dlt-template-id: ${SMS_DLT_PAYMENT_RECEIVED:}
+          text: "{pg}: Received Rs.{amt} for {inv}, receipt {rcpt}. Balance Rs.{bal}."
+        REFUND_ISSUED:
+          dlt-template-id: ${SMS_DLT_REFUND_ISSUED:}
+          text: "{pg}: Refund of Rs.{amt} issued, ref {ref}."
+        MAINTENANCE_UPDATE:
+          dlt-template-id: ${SMS_DLT_MAINTENANCE_UPDATE:}
+          text: "{pg}: Ticket {no} is now {status}."
+        MAINTENANCE_ASSIGNED:
+          dlt-template-id: ${SMS_DLT_MAINTENANCE_ASSIGNED:}
+          text: "{pg}: Ticket {no} ({priority}) has been assigned to you."
+        MAINTENANCE_SLA_BREACH:
+          dlt-template-id: ${SMS_DLT_MAINTENANCE_SLA_BREACH:}
+          text: "{pg}: SLA breached on ticket {no} ({priority})."
+        COMPLAINT_UPDATE:
+          dlt-template-id: ${SMS_DLT_COMPLAINT_UPDATE:}
+          text: "{pg}: Complaint {no} is {status}."
+        COMPLAINT_ESCALATED:
+          dlt-template-id: ${SMS_DLT_COMPLAINT_ESCALATED:}
+          text: "{pg}: Complaint {no} escalated to level {level}."
+        PORTAL_ACCOUNT_CREATED:
+          dlt-template-id: ${SMS_DLT_PORTAL_ACCOUNT_CREATED:}
+          text: "{code} is your {pg} portal code. Use it to set your password in the tenant portal. Valid {validity}."
+        PASSWORD_RESET_OTP:
+          dlt-template-id: ${SMS_DLT_PASSWORD_RESET_OTP:}
+          text: "{code} is your {pg} password reset code. Valid {validity}. Do not share it."
+        PASSWORD_CHANGED:
+          dlt-template-id: ${SMS_DLT_PASSWORD_CHANGED:}
+          text: "{pg}: Your password was changed at {time}. Not you? Contact the PG office."
+    # non-urgent SMS is held back overnight (business time zone)
+    quiet-hours:
+      enabled: ${APP_SMS_QUIET_HOURS_ENABLED:true}
+      start: "21:00"
+      end: "08:00"
+  cache:
+    dashboard-ttl: 60s
+    property-ttl: 10m
+  bootstrap:
+    super-admin-email: ${APP_BOOTSTRAP_SUPER_ADMIN_EMAIL:}
+    super-admin-password: ${APP_BOOTSTRAP_SUPER_ADMIN_PASSWORD:}
+  jobs:
+    enabled: ${APP_JOBS_ENABLED:true}
+    auth-cleanup-cron: ${APP_AUTH_CLEANUP_CRON:0 15 3 * * *}
+
+logging:
+  level:
+    root: INFO
+    com.pgms: INFO
+    org.hibernate.SQL: WARN
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+app:
+  security:
+    jwt:
+      allow-ephemeral-keys: true
+logging:
+  level:
+    com.pgms: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+management:
+  endpoint:
+    health:
+      show-details: never

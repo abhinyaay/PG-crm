@@ -1,0 +1,27 @@
+# secrets / local config
+.env
+*.pem
+*.key
+
+# build output
+backend/target/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+analytics-service/.venv/
+**/.coverage
+**/coverage.xml
+**/htmlcov/
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# local run captures
+run-output/
+
+# database dumps (contain personal data)
+backups/

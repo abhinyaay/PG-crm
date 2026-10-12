@@ -1,0 +1,41 @@
+app:
+  security:
+    jwt:
+      allow-ephemeral-keys: true
+    rate-limit:
+      enabled: false
+    password-reset:
+      # per-IP limits are shared by every test (MockMvc uses 127.0.0.1); the per-identifier limit stays realistic
+      requests-per-ip: 100000
+      verifications-per-ip: 100000
+      requests-per-identifier: 3
+  jobs:
+    enabled: false
+  bootstrap:
+    super-admin-email: root@platform.test
+    super-admin-password: Passw0rd123
+  notifications:
+    # deliveries go to GreenMail / the SMS gateway stub started by AbstractIntegrationTest
+    email:
+      provider: smtp
+      from: no-reply@pgms.test
+      from-name: PGMS Test
+    sms:
+      provider: msg91
+      msg91:
+        auth-key: test-msg91-key
+    # tests must not depend on the time of day they run at (quiet hours are unit tested)
+    quiet-hours:
+      enabled: false
+logging:
+  level:
+    com.pgms: INFO
+    org.testcontainers: WARN
+
+# DLT template ids referenced by application.yml placeholders
+SMS_DLT_BOOKING_CONFIRMED: "1107160000000000001"
+SMS_DLT_BOOKING_RELEASED: "1107160000000000002"
+SMS_DLT_PASSWORD_RESET_OTP: "1107160000000000003"
+SMS_DLT_PORTAL_ACCOUNT_CREATED: "1107160000000000004"
+SMS_DLT_MOVE_IN: "1107160000000000005"
+SMS_DLT_INVOICE_ISSUED: "1107160000000000006"

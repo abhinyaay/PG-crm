@@ -1,0 +1,30 @@
+package com.pgms.notification;
+
+/**
+ * What a notification is about. Stored as text ({@code notifications.type} has no CHECK constraint), so adding a value
+ * needs no migration. Default channels per type and audience live in {@link NotificationPolicy}.
+ */
+public enum NotificationType {
+    BOOKING_CONFIRMED,
+    BOOKING_RELEASED,
+    MOVE_IN,
+    MOVE_OUT,
+    ROOM_TRANSFER,
+    INVOICE_ISSUED,
+    PAYMENT_DUE,
+    PAYMENT_OVERDUE,
+    PAYMENT_RECEIVED,
+    REFUND_ISSUED,
+    /** New ticket, to the property's managers. */
+    MAINTENANCE_CREATED,
+    /** Ticket assigned, to the assignee. */
+    MAINTENANCE_ASSIGNED,
+    /** Status change, to the resident / raiser. */
+    MAINTENANCE_UPDATE,
+    MAINTENANCE_SLA_BREACH,
+    COMPLAINT_UPDATE,
+    COMPLAINT_ESCALATED,
+    PORTAL_ACCOUNT_CREATED,
+    PASSWORD_RESET_OTP,
+    PASSWORD_CHANGED
+}

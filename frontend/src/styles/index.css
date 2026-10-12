@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+    }
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-slate-50 font-sans text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+    overflow-x: hidden;
+  }
+  /* visible keyboard focus everywhere */
+  :focus-visible {
+    outline-color: theme('colors.brand.500');
+  }
+  input[type='date'],
+  input[type='datetime-local'],
+  input[type='month'] {
+    min-height: 44px;
+  }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  /* texture for MAINTENANCE beds so status is not conveyed by color alone */
+  .bg-stripes {
+    background-image: repeating-linear-gradient(135deg, rgb(239 68 68 / 0.12) 0 6px, transparent 6px 12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

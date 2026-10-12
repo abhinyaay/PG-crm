@@ -1,0 +1,14 @@
+apiVersion: 1
+
+providers:
+  - name: pgms
+    orgId: 1
+    folder: PGMS
+    folderUid: pgms
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false   # dashboards are code: edit the JSON in infra/observability/grafana/dashboards
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

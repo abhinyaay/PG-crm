@@ -1,0 +1,39 @@
+[project]
+name = "pgms-analytics-service"
+version = "1.0.0"
+description = "Read-only analytics & reporting service for the PG management platform"
+requires-python = ">=3.12,<3.13"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "S", "SIM", "C4", "RUF", "PT", "PD002"]
+ignore = [
+    "S608",   # SQL built from internal constant fragments only; all values are bound parameters
+    "B008",   # FastAPI Depends()/Query() in defaults is the framework idiom
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "PLR2004"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

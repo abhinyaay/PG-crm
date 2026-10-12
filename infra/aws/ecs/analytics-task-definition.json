@@ -1,0 +1,45 @@
+{
+  "family": "pgms-analytics",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": { "cpuArchitecture": "X86_64", "operatingSystemFamily": "LINUX" },
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/pgms-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/pgms-analytics-task-role",
+  "containerDefinitions": [
+    {
+      "name": "analytics",
+      "image": "<replaced-by-ci>",
+      "essential": true,
+      "portMappings": [{ "containerPort": 8000, "protocol": "tcp" }],
+      "environment": [
+        { "name": "JWKS_URL", "value": "http://backend.pgms.internal:8080/api/v1/auth/jwks" },
+        { "name": "JWT_ISSUER", "value": "pgms-auth" },
+        { "name": "JWT_AUDIENCE", "value": "pgms-api" },
+        { "name": "BUSINESS_TIMEZONE", "value": "Asia/Kolkata" },
+        { "name": "CACHE_TTL_SECONDS", "value": "300" },
+        { "name": "LOG_LEVEL", "value": "INFO" }
+      ],
+      "secrets": [
+        { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:<region>:<ACCOUNT_ID>:secret:pgms/prod/analytics:database_url::" },
+        { "name": "REDIS_URL", "valueFrom": "arn:aws:secretsmanager:<region>:<ACCOUNT_ID>:secret:pgms/prod/analytics:redis_url::" }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/live',timeout=4).status==200 else 1)\""],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 20
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/pgms/prod/analytics",
+          "awslogs-region": "<region>",
+          "awslogs-stream-prefix": "analytics"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+# Runtime dependencies (pinned). Keep in sync with the Dockerfile base image (Python 3.12).
+fastapi==0.115.6
+starlette==0.41.3
+anyio==4.7.0
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+SQLAlchemy==2.0.36
+psycopg[binary]==3.2.3
+pandas==2.2.3
+numpy==2.2.1
+redis==5.2.1
+PyJWT[crypto]==2.10.1
+cryptography==44.0.0

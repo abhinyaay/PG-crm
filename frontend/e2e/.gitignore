@@ -1,0 +1,4 @@
+# Playwright artefacts (never commit: .auth holds live refresh tokens)
+.auth/
+test-results/
+playwright-report/
