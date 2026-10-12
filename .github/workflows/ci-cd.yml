@@ -167,7 +167,7 @@ jobs:
       frontend-image: ${{ steps.refs.outputs.frontend }}
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Configure AWS credentials (main only)
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.AWS_DEPLOY_ENABLED == 'true'
