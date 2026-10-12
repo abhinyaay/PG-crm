@@ -1,5 +1,7 @@
 # CI on every push/PR; CD (image publish + ECS deploy) on main only.
 # AWS access uses GitHub OIDC -> IAM role assumption: no long-lived AWS keys are stored in GitHub.
+# Publishing/deploying is switched on by the repository variable AWS_DEPLOY_ENABLED=true (Settings -> Variables)
+# together with the secret AWS_DEPLOY_ROLE_ARN; until then CI only builds, tests and scans.
 name: ci-cd
 
 on:
@@ -168,14 +170,14 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Configure AWS credentials (main only)
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.AWS_DEPLOY_ENABLED == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Login to Amazon ECR (main only)
         id: ecr
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.AWS_DEPLOY_ENABLED == 'true'
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Compute image references
@@ -236,7 +238,7 @@ jobs:
           exit-code: '1'
 
       - name: Push images (main only)
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.AWS_DEPLOY_ENABLED == 'true'
         run: |
           docker push "${{ steps.refs.outputs.backend }}"
           docker push "${{ steps.refs.outputs.analytics }}"
@@ -244,7 +246,7 @@ jobs:
 
   deploy:
     name: Deploy to AWS ECS (production)
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.AWS_DEPLOY_ENABLED == 'true'
     needs: images
     runs-on: ubuntu-latest
     timeout-minutes: 30
