@@ -189,7 +189,7 @@ jobs:
           echo "frontend=$REGISTRY/$FRONTEND_REPOSITORY:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
 
       - name: Build backend image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: backend
           load: true
@@ -197,7 +197,7 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
       - name: Build analytics image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: analytics-service
           load: true
@@ -206,7 +206,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=analytics
 
       - name: Build frontend image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: frontend
           load: true
