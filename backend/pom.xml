@@ -24,7 +24,7 @@
         <logstash-encoder.version>8.1</logstash-encoder.version>
         <openpdf.version>2.4.0</openpdf.version>
         <greenmail.version>2.1.5</greenmail.version>
-        <checkstyle.version>10.26.1</checkstyle.version>
+        <checkstyle.version>14.3.0</checkstyle.version>
         <jacoco.version>0.8.15</jacoco.version>
         <jacoco.minimum.line.coverage>0.75</jacoco.minimum.line.coverage>
         <!-- populated by jacoco:prepare-agent; empty default keeps surefire happy when jacoco is skipped -->
