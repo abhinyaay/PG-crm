@@ -11,7 +11,7 @@ RUN mvn -B -q package -DskipTests -Dcheckstyle.skip -Djacoco.skip=true \
     && java -Djarmode=tools -jar target/pgms-backend.jar extract --layers --launcher --destination target/extracted
 
 # ---- runtime: JRE only, non-root, layered for fast rebuilds/pulls ----
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 LABEL org.opencontainers.image.title="pgms-backend" \
       org.opencontainers.image.description="PG management platform - transactional core API"
 RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
