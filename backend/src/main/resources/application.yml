@@ -253,6 +253,25 @@ app:
   jobs:
     enabled: ${APP_JOBS_ENABLED:true}
     auth-cleanup-cron: ${APP_AUTH_CLEANUP_CRON:0 15 3 * * *}
+  # Biometric entry/exit module (enabled per property in the app; these are device-ingestion settings)
+  access:
+    # punches dated further in the future are stored but flagged (device clock wrong)
+    max-clock-skew: ${APP_ACCESS_MAX_CLOCK_SKEW:10m}
+    # limit alerts only for punches younger than this (old backlog uploads do not page managers)
+    alert-max-age: ${APP_ACCESS_ALERT_MAX_AGE:2h}
+    # last_seen_at is written at most this often per device
+    heartbeat-write-interval: 30s
+    unknown-serial-log-interval: 10m
+    # failed X-Device-Key attempts per client IP per minute before 429
+    device-key-failures-per-window: ${APP_ACCESS_KEY_FAILURES_PER_MINUTE:30}
+    max-attlog-lines: 5000
+    # options returned in the ZKTeco/eSSL ADMS handshake
+    adms:
+      time-zone: ${APP_ACCESS_ADMS_TIMEZONE:330}
+      delay: ${APP_ACCESS_ADMS_DELAY:30}
+      error-delay: 60
+      trans-times: "00:00;14:05"
+      trans-interval: 1
 
 logging:
   level:

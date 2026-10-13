@@ -26,5 +26,9 @@ public enum NotificationType {
     COMPLAINT_ESCALATED,
     PORTAL_ACCOUNT_CREATED,
     PASSWORD_RESET_OTP,
-    PASSWORD_CHANGED
+    PASSWORD_CHANGED,
+    /** A resident tried to enter after using up the daily entry limit: property managers + the resident (in-app). */
+    ACCESS_LIMIT_EXCEEDED,
+    /** A biometric gate device stopped calling in, to the property's managers. */
+    ACCESS_DEVICE_OFFLINE
 }

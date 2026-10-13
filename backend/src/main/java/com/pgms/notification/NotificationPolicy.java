@@ -7,6 +7,8 @@ import static com.pgms.notification.ChannelRule.NONE;
 import static com.pgms.notification.ChannelRule.OFF;
 import static com.pgms.notification.ChannelRule.ON;
 import static com.pgms.notification.ChannelRule.ON_IF_IMPORTANT;
+import static com.pgms.notification.NotificationType.ACCESS_DEVICE_OFFLINE;
+import static com.pgms.notification.NotificationType.ACCESS_LIMIT_EXCEEDED;
 import static com.pgms.notification.NotificationType.BOOKING_CONFIRMED;
 import static com.pgms.notification.NotificationType.BOOKING_RELEASED;
 import static com.pgms.notification.NotificationType.COMPLAINT_ESCALATED;
@@ -97,6 +99,10 @@ public class NotificationPolicy {
         row(PASSWORD_RESET_OTP,       STAFF,     NONE,      MANDATORY,         MANDATORY);
         row(PASSWORD_CHANGED,         RESIDENT,  ON,        MANDATORY,         OFF);
         row(PASSWORD_CHANGED,         STAFF,     ON,        MANDATORY,         OFF);
+        // biometric gate: managers by in-app + email (SMS opt-in, needs a DLT template); the resident in-app only
+        row(ACCESS_LIMIT_EXCEEDED,    STAFF,     ON,        ON,                OFF);
+        row(ACCESS_LIMIT_EXCEEDED,    RESIDENT,  ON,        NONE,              NONE);
+        row(ACCESS_DEVICE_OFFLINE,    STAFF,     ON,        ON,                OFF);
     }
 
     /** The three channel cells of one matrix row. */
