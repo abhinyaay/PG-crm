@@ -83,6 +83,12 @@ class MoveOutWorkflowIT extends MoveOutTestSupport {
         assertThat(settlement.get("payableByTenant").decimalValue()).isEqualByComparingTo("0");
         assertThat(settlement.get("refundDueBy").asText()).isEqualTo(today.plusDays(7).toString());
         assertThat(settlement.get("depositStatus").asText()).isEqualTo("REFUND_DUE");
+        Response again = api.post("/api/v1/move-outs/" + moveOut + "/complete", manager,
+                "{\"actualMoveOutDate\":\"" + today + "\"}");
+        assertThat(again.status()).isEqualTo(409);
+        assertThat(again.body().get("code").asText()).isEqualTo("MOVE_OUT_INVALID_STATE");
+        assertThat(fixtures.count("SELECT count(*) FROM invoices WHERE tenant_id = ? AND invoice_type = 'SETTLEMENT'",
+                tenantId)).isEqualTo(1);
 
         // the dues counted against the deposit are really closed, deductions became revenue lines
         assertThat(openInvoices(tenantId)).isEmpty();
@@ -293,6 +299,22 @@ class MoveOutWorkflowIT extends MoveOutTestSupport {
         assertThat(deposits.get("totalElements").asLong()).isEqualTo(2);
         assertThat(fixtures.count("SELECT count(*) FROM move_outs WHERE tenant_id = ? AND status IN ('SETTLED', 'CLOSED')",
                 tenantId)).isEqualTo(2);
+
+        // stay 2 still owes money: closing needs a write-off; stay 1 cannot close while its refund is pending
+        long moveOut2 = s2.get("moveOutId").asLong();
+        Response blocked = api.post("/api/v1/move-outs/" + moveOut2 + "/close", admin, "{\"note\":\"Tenant unreachable\"}");
+        assertThat(blocked.status()).isEqualTo(409);
+        assertThat(blocked.body().get("code").asText()).isEqualTo("DUES_OUTSTANDING");
+        assertThat(api.post("/api/v1/move-outs/" + moveOut2 + "/close", manager,
+                "{\"writeOffDues\":true,\"note\":\"x\"}").status()).isEqualTo(403);
+        Response closed = api.post("/api/v1/move-outs/" + moveOut2 + "/close", admin,
+                "{\"writeOffDues\":true,\"note\":\"Tenant unreachable\"}");
+        assertThat(closed.status()).as("%s", closed.body()).isEqualTo(200);
+        assertThat(closed.body().get("status").asText()).isEqualTo("CLOSED");
+        assertThat(openBalance(tenantId)).isEqualByComparingTo("0");
+        Response pending = api.post("/api/v1/move-outs/" + s1.get("moveOutId").asLong() + "/close", admin,
+                "{\"note\":\"done\"}");
+        assertThat(pending.body().get("code").asText()).isEqualTo("REFUND_PENDING");
     }
 
     /** Transfer to a costlier room bills the deposit difference; a prorated final month credits unused rent. */
