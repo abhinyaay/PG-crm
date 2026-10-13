@@ -239,7 +239,8 @@ How "Rent" is modelled: the agreed rent is snapshotted on the **allocation**; mo
 | **Auth** | Login, RS256 access tokens (15 min), opaque rotating refresh tokens (14 days, SHA-256 hashed at rest, reuse detection), logout / logout-all, change password, JWKS endpoint, account activation/deactivation, Redis-backed login rate limit. |
 | **Users & roles** | `SUPER_ADMIN`, `PROPERTY_ADMIN`, `MANAGER`, `STAFF`, `TENANT`. Admins manage accounts within their organization; managers/staff are assigned to properties. |
 | **Properties** | Property → building → floor → room → bed hierarchy, status, address, rent due day, manager/staff assignment, live occupancy. |
-| **Rooms & beds** | Room types with capacity rules, beds auto-generated from capacity, capacity changes (only free beds removed), bed state machine, maintenance toggling, availability search. |
+| **Rooms & beds** | Room types with capacity rules, beds auto-generated from capacity, capacity changes (only free beds removed), bed state machine, maintenance toggling, availability search. Spaces of other kinds (halls/dormitories up to 50 beds, kitchens, washrooms, lounges ...), individually added/renamed/removed beds with optional per-bed prices. |
+| **Floor layout** | Per-floor grid editor: spaces placed as rectangles (bounds + overlap validated under a floor row lock, optimistic version per space), beds drawn inside spaces; one-call layout read. |
 | **Tenants** | Profile, emergency contacts, KYC document metadata (masked numbers only), status lifecycle, search (name/email/phone, `pg_trgm`), stay history, balance, portal login creation. |
 | **Booking & allocation** | Time-boxed reservations with automatic expiry, check-in (reserved or walk-in), check-out with deposit settlement, transfers across rooms/properties, notice period, full allocation history. |
 | **Billing** | Deposit + prorated first-month invoice at check-in, daily idempotent monthly rent generation, extra charges, discounts, void, overdue marking, due reminders, idempotent payments and refunds, PDF receipts, outstanding balance. |
@@ -269,8 +270,9 @@ How "Rent" is modelled: the agreed rent is snapshotted on the **allocation**; mo
 | `/organizations` | CRUD + `PATCH /{id}/status` (SUPER_ADMIN) |
 | `/users` | create, search, update, activate/deactivate, reset-password, soft delete |
 | `/properties` | CRUD, status, `/{id}/occupancy`, `/{id}/buildings`, `/{id}/buildings/{b}/floors`, `/{id}/assignments` |
-| `/rooms` | create (beds generated), search, update (pricing/layout), status, delete |
-| `/beds` | availability search, get, `PATCH /{id}/status` (maintenance), `/{id}/allocations` |
+| `/rooms` | create (any `spaceKind`, optional geometry; beds generated), search, update (pricing/capacity), status, delete, `POST /{id}/beds` |
+| `/beds` | availability search (effective per-bed price), get, `PATCH /{id}` (code/label/price overrides/position), `DELETE /{id}`, `PATCH /{id}/status` (maintenance), `/{id}/allocations` |
+| `/properties/{id}/floors/{f}/layout`, `/floors/{f}` | `GET`/`PUT` floor layout (bulk move/resize), `PATCH` floor label/grid size |
 | `/tenants` | create, search, get, update, delete, `/me`, emergency contacts, documents, portal account, `/{id}/allocations`, `/{id}/balance` |
 | `/bookings` | reserve, search, get, cancel |
 | `/allocations` | `check-in`, `/{id}/check-out`, `/{id}/transfer`, `/{id}/notice`, search |
@@ -417,6 +419,16 @@ Tickets follow explicit state machines (`OPEN → ASSIGNED → IN_PROGRESS → R
 reopen). SLA deadline = created + priority target (CRITICAL 4 h, HIGH 24 h, MEDIUM 3 d, LOW 7 d); a job flags breaches
 and notifies managers/admins. Complaints escalate (manually or automatically when overdue) up to level 3, each level
 with a fresh deadline; tenants never see internal notes.
+
+### Floor layout editor
+
+Each floor has a grid (default 24 x 16). Every space (`rooms` row, with a `spaceKind`) may be placed as a rectangle
+`layoutX/Y/W/H`; spaces may touch but not overlap and must fit the grid (`422 LAYOUT_OVERLAP` /
+`LAYOUT_OUT_OF_BOUNDS`). `PUT .../layout` applies many moves atomically: it locks the floor row, checks each space's
+`version` (`409 LAYOUT_STALE`), then validates the resulting floor as a whole, so two editors can never commit
+overlapping spaces. Beds are added/removed one at a time under a row lock on their room, keeping `capacity` equal to
+the active bed count (a ROOM's sharing type follows it). A per-bed price override replaces the room price in bed
+search, is quoted on reservations (`quotedMonthlyRent`) and is charged at check-in/transfer unless overridden.
 
 ---
 
