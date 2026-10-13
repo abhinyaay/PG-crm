@@ -34,6 +34,13 @@ public interface BedRepository extends JpaRepository<Bed, Long>, JpaSpecificatio
     @Query("select b from Bed b where b.room.id in :roomIds order by b.bedCode")
     List<Bed> findByRoomIdIn(@Param("roomIds") List<Long> roomIds);
 
+    /** Scalar lookup so the room can be locked before the bed (lock order room -> bed for bed edits). */
+    @Query("select b.room.id from Bed b where b.id = :id")
+    Optional<Long> findRoomIdById(@Param("id") Long id);
+
+    @Query("select count(b) from Bed b where b.room.id = :roomId")
+    long countByRoomId(@Param("roomId") Long roomId);
+
     @Override
     @EntityGraph(attributePaths = {"room"})
     Page<Bed> findAll(Specification<Bed> spec, Pageable pageable);

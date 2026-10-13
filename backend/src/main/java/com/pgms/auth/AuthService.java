@@ -140,7 +140,8 @@ public class AuthService {
     public void changePassword(Long userId, String currentPassword, String newPassword) {
         User user = userRepository.findById(userId).orElseThrow(() -> new NotFoundException("User", userId));
         if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
-            throw new UnauthorizedException("INVALID_CREDENTIALS", "Current password is incorrect");
+            // 422, not 401: the access token is fine, only the submitted field is wrong (a 401 makes clients log out)
+            throw new BusinessRuleException("INVALID_CURRENT_PASSWORD", "Current password is incorrect");
         }
         if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
             throw new BusinessRuleException("PASSWORD_REUSED", "New password must differ from the current password");

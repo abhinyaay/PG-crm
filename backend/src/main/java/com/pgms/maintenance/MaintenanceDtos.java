@@ -1,6 +1,7 @@
 package com.pgms.maintenance;
 
 import com.pgms.common.domain.Priority;
+import com.pgms.common.lookup.DisplayNames;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -31,12 +32,14 @@ public final class MaintenanceDtos {
                                       Long raisedByUserId, MaintenanceCategory category, Priority priority, String title,
                                       String description, MaintenanceStatus status, Long assignedToUserId, Instant assignedAt,
                                       Instant startedAt, Instant resolvedAt, Instant closedAt, String resolutionNotes,
-                                      Instant slaDueAt, boolean slaBreached, Instant createdAt) {
-        static MaintenanceResponse of(MaintenanceRequest m) {
+                                      Instant slaDueAt, boolean slaBreached, Instant createdAt, String tenantName,
+                                      String raisedByName, String assignedToName) {
+        static MaintenanceResponse of(MaintenanceRequest m, DisplayNames.Index names) {
             return new MaintenanceResponse(m.getId(), m.getTicketNumber(), m.getPropertyId(), m.getRoomId(), m.getTenantId(),
                     m.getRaisedByUserId(), m.getCategory(), m.getPriority(), m.getTitle(), m.getDescription(), m.getStatus(),
                     m.getAssignedToUserId(), m.getAssignedAt(), m.getStartedAt(), m.getResolvedAt(), m.getClosedAt(),
-                    m.getResolutionNotes(), m.getSlaDueAt(), m.isSlaBreached(), m.getCreatedAt());
+                    m.getResolutionNotes(), m.getSlaDueAt(), m.isSlaBreached(), m.getCreatedAt(), names.tenant(m.getTenantId()),
+                    names.user(m.getRaisedByUserId()), names.user(m.getAssignedToUserId()));
         }
     }
 
