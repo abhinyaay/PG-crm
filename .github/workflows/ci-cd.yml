@@ -244,14 +244,14 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend
 
       - name: Scan backend image (fail on fixable CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: ${{ steps.refs.outputs.backend }}
           severity: CRITICAL
           ignore-unfixed: true
           exit-code: '1'
       - name: Scan analytics image (fail on fixable CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: ${{ steps.refs.outputs.analytics }}
           severity: CRITICAL
@@ -259,7 +259,7 @@ jobs:
           exit-code: '1'
 
       - name: Scan frontend image (fail on fixable CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: ${{ steps.refs.outputs.frontend }}
           severity: CRITICAL
