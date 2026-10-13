@@ -2,6 +2,8 @@ package com.pgms.billing;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -48,6 +50,22 @@ public class Refund {
     @Column(name = "created_by", updatable = false)
     private Long createdBy;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, updatable = false)
+    private RefundKind kind = RefundKind.CASH;
+
+    /** How a CASH refund was paid out (deposit refunds); null for manual refunds and adjustments. */
+    @Enumerated(EnumType.STRING)
+    @Column(updatable = false)
+    private PaymentMethod method;
+
+    @Column(name = "payout_reference", updatable = false)
+    private String payoutReference;
+
+    /** The deposit ledger entry this refund belongs to (deposit refunds / adjustments made by the deposit module). */
+    @Column(name = "deposit_transaction_id", updatable = false)
+    private Long depositTransactionId;
+
     protected Refund() {
     }
 
@@ -63,6 +81,17 @@ public class Refund {
         this.refundedAt = refundedAt;
         this.createdAt = refundedAt;
         this.createdBy = createdBy;
+    }
+
+    /** Refund created by the deposit module: a payout (CASH) or an application to other dues (ADJUSTMENT). */
+    Refund(String refundReference, Payment payment, BigDecimal amount, String reason, String idempotencyKey,
+           Instant refundedAt, Long createdBy, RefundKind kind, PaymentMethod method, String payoutReference,
+           Long depositTransactionId) {
+        this(refundReference, payment, amount, reason, idempotencyKey, "internal", refundedAt, createdBy);
+        this.kind = kind;
+        this.method = method;
+        this.payoutReference = payoutReference;
+        this.depositTransactionId = depositTransactionId;
     }
 
     public Long getId() {
@@ -95,5 +124,21 @@ public class Refund {
 
     public Instant getRefundedAt() {
         return refundedAt;
+    }
+
+    public RefundKind getKind() {
+        return kind;
+    }
+
+    public PaymentMethod getMethod() {
+        return method;
+    }
+
+    public String getPayoutReference() {
+        return payoutReference;
+    }
+
+    public Long getDepositTransactionId() {
+        return depositTransactionId;
     }
 }

@@ -2,14 +2,13 @@ package com.pgms.billing;
 
 import com.pgms.audit.AuditService;
 import com.pgms.billing.BillingDtos.AddChargeRequest;
-import com.pgms.billing.BillingDtos.Deduction;
 import com.pgms.billing.BillingDtos.InvoiceResponse;
-import com.pgms.billing.BillingDtos.SettlementSummary;
 import com.pgms.billing.BillingDtos.TenantBalanceResponse;
 import com.pgms.booking.Allocation;
 import com.pgms.booking.AllocationRepository;
 import com.pgms.common.api.PageResponse;
 import com.pgms.common.api.SortValidator;
+import com.pgms.common.exception.ConflictException;
 import com.pgms.common.exception.NotFoundException;
 import com.pgms.common.lookup.DisplayNames;
 import com.pgms.property.Property;
@@ -17,7 +16,6 @@ import com.pgms.property.PropertyRepository;
 import com.pgms.security.AccessGuard;
 import com.pgms.security.AccessScope;
 import com.pgms.security.CurrentUserProvider;
-import com.pgms.tenant.Tenant;
 import com.pgms.tenant.TenantService;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -97,8 +95,12 @@ public class InvoiceService {
         invoiceFactory.depositInvoice(allocation, allocation.getStartDate(), userId).ifPresent(issued::add);
         YearMonth current = YearMonth.from(today);
         for (YearMonth month = YearMonth.from(allocation.getStartDate()); !month.isAfter(current); month = month.plusMonths(1)) {
+            LocalDate from = firstUnbilledDay(allocation, month);
+            if (from == null) {
+                continue;
+            }
             YearMonth billed = month;
-            invoiceFactory.rentInvoice(allocation, month, rentDueDay, today, userId).ifPresent(invoice -> {
+            invoiceFactory.rentInvoice(allocation, month, rentDueDay, today, userId, from).ifPresent(invoice -> {
                 recurringChargeService.addRecurringLines(invoice, billed, userId);
                 issued.add(invoice);
             });
@@ -106,6 +108,25 @@ public class InvoiceService {
         invoiceRepository.saveAll(issued);
         issued.forEach(this::publishIssued);
         return issued;
+    }
+
+    /**
+     * First day of {@code month} (from the allocation start) not yet covered by a live rent invoice of the same
+     * resident, or null when the rest of the month is already billed. A resident who checks out and back in within
+     * one month already has that month's rent invoice from the earlier stay (the daily job applies the same per-tenant
+     * check), so the new stay is billed only for days the earlier invoice does not cover. The caller holds the tenant
+     * row lock, so two check-ins cannot both see the month as unbilled.
+     */
+    private LocalDate firstUnbilledDay(Allocation allocation, YearMonth month) {
+        LocalDate from = allocation.getStartDate().isAfter(month.atDay(1)) ? allocation.getStartDate() : month.atDay(1);
+        for (Invoice existing : invoiceRepository.findLiveRentForTenantMonth(allocation.getTenantId(), month.atDay(1))) {
+            LocalDate start = existing.getPeriodStart() == null ? month.atDay(1) : existing.getPeriodStart();
+            LocalDate end = existing.getPeriodEnd() == null ? month.atEndOfMonth() : existing.getPeriodEnd();
+            if (!start.isAfter(from) && !end.isBefore(from)) {
+                from = end.plusDays(1);
+            }
+        }
+        return from.isAfter(month.atEndOfMonth()) ? null : from;
     }
 
     /**
@@ -267,19 +288,132 @@ public class InvoiceService {
         return adjusted;
     }
 
+    /** One charge on a SETTLEMENT invoice. */
+    public record SettlementCharge(LineItemType type, String description, BigDecimal amount) {
+    }
+
     /**
-     * Move-out settlement: refundDue = max(0, depositHeld - outstanding - deductions); otherwise the tenant owes the
-     * difference. The refund itself is executed explicitly through the (idempotent) refunds API.
+     * Adds charges to the allocation's SETTLEMENT invoice, creating it (due today) on first use. Returns the live
+     * settlement invoice (null when there is none and nothing to charge). A charge added to an already paid
+     * settlement invoice reopens it.
      */
-    @Transactional(readOnly = true)
-    public SettlementSummary settlement(Tenant tenant, List<Deduction> deductionItems) {
-        List<Deduction> items = deductionItems == null ? List.of() : deductionItems;
-        BigDecimal deposit = paymentRepository.depositHeldForTenant(tenant.getId());
-        BigDecimal outstanding = invoiceRepository.outstandingForTenant(tenant.getId());
-        BigDecimal deductions = items.stream().map(Deduction::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal net = deposit.subtract(outstanding).subtract(deductions);
-        return new SettlementSummary(deposit, outstanding, deductions, net.max(BigDecimal.ZERO),
-                net.negate().max(BigDecimal.ZERO), items);
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Invoice addSettlementCharges(Allocation allocation, List<SettlementCharge> charges) {
+        List<SettlementCharge> positive = charges.stream().filter(c -> c.amount() != null && c.amount().signum() > 0).toList();
+        Invoice invoice = invoiceRepository.findLiveSettlementForUpdate(allocation.getId()).orElse(null);
+        if (positive.isEmpty()) {
+            return invoice;
+        }
+        LocalDate today = LocalDate.now(clock);
+        Long userId = currentUserProvider.currentUserId().orElse(null);
+        boolean created = invoice == null;
+        if (created) {
+            invoice = invoiceFactory.settlementInvoice(allocation, today);
+        }
+        for (SettlementCharge charge : positive) {
+            invoice.addCharge(charge.type(), charge.description(), charge.amount(), clock.instant(), userId, today);
+        }
+        invoiceRepository.saveAndFlush(invoice);
+        if (created) {
+            publishIssued(invoice);
+        }
+        auditService.record(invoice.getOrganizationId(), "SETTLEMENT_CHARGES_ADDED", "INVOICE", invoice.getId(),
+                Map.of("charges", positive.size(), "total", positive.stream().map(SettlementCharge::amount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add)));
+        return invoice;
+    }
+
+    /** A further deposit invoice (top-up) on an existing stay; 409 while another deposit invoice is still open. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Invoice issueDepositTopUp(Allocation allocation, BigDecimal amount, String description) {
+        if (invoiceRepository.hasOpenDepositInvoice(allocation.getId())) {
+            throw new ConflictException("DEPOSIT_INVOICE_OPEN",
+                    "This stay already has an unpaid deposit invoice; collect or void it before requesting a top-up");
+        }
+        Invoice invoice = invoiceFactory.depositTopUpInvoice(allocation, amount, description, LocalDate.now(clock),
+                currentUserProvider.currentUserId().orElse(null));
+        invoiceRepository.saveAndFlush(invoice);
+        publishIssued(invoice);
+        auditService.record(invoice.getOrganizationId(), "DEPOSIT_TOP_UP_INVOICED", "INVOICE", invoice.getId(),
+                Map.of("amount", amount, "allocationId", allocation.getId()));
+        return invoice;
+    }
+
+    /**
+     * Rent credit for days not stayed. {@code discounted} was taken off the invoice balance; {@code refundable} was
+     * already paid and has to be given back from that invoice's payments.
+     */
+    public record RentCredit(Long invoiceId, String invoiceNumber, BigDecimal discounted, BigDecimal refundable) {
+    }
+
+    /**
+     * Credits rent for days not stayed, inside the check-out transaction after {@link #closeOutAfterMoveOut}:
+     * <ul>
+     *   <li>a rent invoice whose period starts on/after the move-out date (already voided or written off when unpaid)
+     *       is credited with what was actually collected on it;</li>
+     *   <li>with {@code prorateFinalMonth}, the invoice covering the move-out date is cut to end the day before and
+     *       the unused days ({@code rent lines x unused days / billed days}) are discounted up to its balance; any
+     *       remainder was already paid and becomes refundable.</li>
+     * </ul>
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<RentCredit> creditUnusedRent(Long tenantId, LocalDate moveOutDate, boolean prorateFinalMonth) {
+        Instant now = clock.instant();
+        LocalDate today = LocalDate.now(clock);
+        Long userId = currentUserProvider.currentUserId().orElse(null);
+        List<RentCredit> credits = new ArrayList<>();
+        for (Long id : invoiceRepository.findLiveRentIdsEndingOnOrAfter(tenantId, moveOutDate)) {
+            Invoice invoice = invoiceRepository.findByIdForUpdate(id).orElseThrow(() -> new NotFoundException("Invoice", id));
+            if (invoice.getPeriodStart() == null || invoice.getPeriodEnd() == null) {
+                continue;
+            }
+            if (!invoice.getPeriodStart().isBefore(moveOutDate)) {
+                BigDecimal collected = collectedNet(invoice.getId());
+                if (collected.signum() > 0) {
+                    credits.add(new RentCredit(invoice.getId(), invoice.getInvoiceNumber(), BigDecimal.ZERO, collected));
+                }
+                continue;
+            }
+            if (!prorateFinalMonth) {
+                continue;
+            }
+            BigDecimal rentLines = invoice.getLineItems().stream().filter(l -> l.getLineType() == LineItemType.RENT)
+                    .map(InvoiceLineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal credit = RentCalculator.unusedRentCredit(rentLines, invoice.getPeriodStart(), invoice.getPeriodEnd(),
+                    moveOutDate);
+            invoice.endPeriodOn(moveOutDate.minusDays(1));
+            if (credit.signum() <= 0) {
+                continue;
+            }
+            BigDecimal discount = invoice.isOpen() ? credit.min(invoice.balance()) : BigDecimal.ZERO;
+            if (discount.signum() > 0) {
+                invoice.applyDiscount("Unused days from " + moveOutDate + " (final month prorated)", discount, now, userId,
+                        today);
+            }
+            BigDecimal refundable = credit.subtract(discount).min(collectedNet(invoice.getId())).max(BigDecimal.ZERO);
+            credits.add(new RentCredit(invoice.getId(), invoice.getInvoiceNumber(), discount, refundable));
+            auditService.record(invoice.getOrganizationId(), "FINAL_MONTH_PRORATED", "INVOICE", id,
+                    Map.of("moveOutDate", moveOutDate.toString(), "credit", credit, "discounted", discount));
+        }
+        invoiceRepository.flush();
+        return credits;
+    }
+
+    /** Collected on an invoice by real payments (not deposit adjustments), net of refunds. */
+    private BigDecimal collectedNet(Long invoiceId) {
+        return paymentRepository.findByInvoiceIdOrderByPaidAt(invoiceId).stream()
+                .filter(p -> p.getMethod() != PaymentMethod.DEPOSIT_ADJUSTMENT)
+                .map(Payment::refundableAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** Open invoice ids of a resident (all stays), ascending - the lock order for settlement. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<Invoice> lockOpenInvoices(Long tenantId) {
+        List<Invoice> open = new ArrayList<>();
+        for (Long id : invoiceRepository.findOpenIdsByTenant(tenantId)) {
+            invoiceRepository.findByIdForUpdate(id).filter(Invoice::isOpen).ifPresent(open::add);
+        }
+        return open;
     }
 
     Invoice lockAccessible(Long id) {

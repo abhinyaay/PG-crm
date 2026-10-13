@@ -67,7 +67,9 @@ public final class BookingDtos {
     public record TransferRequest(
             @NotNull Long targetBedId,
             @NotNull LocalDate transferDate,
-            @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal newMonthlyRent) {
+            @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal newMonthlyRent,
+            /** Deposit for the new bed; when higher than the current one a top-up deposit invoice is issued. */
+            @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal newSecurityDeposit) {
     }
 
     public record NoticeRequest(@NotNull LocalDate expectedCheckOutDate) {

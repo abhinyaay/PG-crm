@@ -43,5 +43,14 @@ public enum NotificationType {
     PAYMENT_CLAIMS_PENDING,
     AUTOPAY_MANDATE_UPDATED,
     AUTOPAY_DEBIT_SUCCEEDED,
-    AUTOPAY_DEBIT_FAILED
+    AUTOPAY_DEBIT_FAILED,
+    /** Notice given (acknowledgement to the resident, heads-up to managers). */
+    MOVE_OUT_REQUESTED,
+    MOVE_OUT_WITHDRAWN,
+    /** Final move-out settlement statement, to the resident. */
+    SETTLEMENT_FINALIZED,
+    /** Deposit refund paid out, to the resident. */
+    DEPOSIT_REFUND_ISSUED,
+    /** Deposit refund past its due-by date, to the owners (property admins). */
+    DEPOSIT_REFUND_OVERDUE
 }

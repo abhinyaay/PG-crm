@@ -292,6 +292,15 @@ app:
         AUTOPAY_DEBIT_FAILED:
           dlt-template-id: ${SMS_DLT_AUTOPAY_DEBIT_FAILED:}
           text: "{pg}: AutoPay could not collect Rs.{amt} for invoice {inv}. {next}"
+        MOVE_OUT_REQUESTED:
+          dlt-template-id: ${SMS_DLT_MOVE_OUT_REQUESTED:}
+          text: "{pg}: Notice received, ref {ref}. Move-out on {date}. Notice shortfall {days} days (Rs.{amt})."
+        SETTLEMENT_FINALIZED:
+          dlt-template-id: ${SMS_DLT_SETTLEMENT_FINALIZED:}
+          text: "{pg}: Final settlement - deposit Rs.{dep}, deductions Rs.{ded}, {outcome}."
+        DEPOSIT_REFUND_ISSUED:
+          dlt-template-id: ${SMS_DLT_DEPOSIT_REFUND_ISSUED:}
+          text: "{pg}: Deposit refund of Rs.{amt} sent via {method}, ref {ref}."
     # non-urgent SMS is held back overnight (business time zone)
     quiet-hours:
       enabled: ${APP_SMS_QUIET_HOURS_ENABLED:true}
@@ -325,6 +334,10 @@ app:
       error-delay: 60
       trans-times: "00:00;14:05"
       trans-interval: 1
+  # move-out workflow & deposits (V6)
+  moveout:
+    refund-overdue-cron: ${APP_DEPOSIT_REFUND_OVERDUE_CRON:0 30 9 * * *}
+    deposit-backfill-cron: ${APP_DEPOSIT_BACKFILL_CRON:0 45 2 * * *}
 
 logging:
   level:

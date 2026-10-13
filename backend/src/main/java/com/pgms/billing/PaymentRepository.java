@@ -2,6 +2,7 @@ package com.pgms.billing;
 
 import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -30,4 +31,13 @@ public interface PaymentRepository extends JpaRepository<Payment, Long>, JpaSpec
               and i.invoiceType = com.pgms.billing.InvoiceType.SECURITY_DEPOSIT
             """)
     BigDecimal depositHeldForTenant(@Param("tenantId") Long tenantId);
+
+    /** Payments collected on the deposit invoices of the given allocations (one stay chain), oldest first. */
+    @Query("""
+            select p from Payment p, Invoice i
+            where p.invoiceId = i.id and i.invoiceType = com.pgms.billing.InvoiceType.SECURITY_DEPOSIT
+              and i.allocationId in :allocationIds
+            order by p.id
+            """)
+    List<Payment> findDepositPaymentsForAllocations(@Param("allocationIds") Collection<Long> allocationIds);
 }

@@ -23,6 +23,9 @@ public interface AllocationRepository extends JpaRepository<Allocation, Long>, J
 
     Optional<Allocation> findByBedIdAndStatus(Long bedId, AllocationStatus status);
 
+    /** The allocation a transfer created from {@code previousAllocationId} (stay chains are linear). */
+    Optional<Allocation> findFirstByPreviousAllocationIdOrderByIdDesc(Long previousAllocationId);
+
     List<Allocation> findByTenantIdOrderByStartDateDesc(Long tenantId);
 
     List<Allocation> findByBedIdOrderByStartDateDesc(Long bedId);
@@ -32,7 +35,8 @@ public interface AllocationRepository extends JpaRepository<Allocation, Long>, J
      * Selected by date range rather than status so a delayed job run still bills a tenant who left mid-month.
      * The "already billed" check is per <em>tenant</em>, not per allocation: a transfer effective on (or back-dated
      * before) the 1st after that month was billed on the old allocation keeps the month there - the new allocation
-     * must not be billed for it a second time.
+     * must not be billed for it a second time. An invoice for a period the stay never reached (credited back at
+     * move-out) does not count, so a resident who checks back in that month is billed again.
      */
     @Query("""
             select a.id from Allocation a
@@ -40,7 +44,10 @@ public interface AllocationRepository extends JpaRepository<Allocation, Long>, J
               and not exists (select 1 from Invoice i where i.tenantId = a.tenantId
                               and i.invoiceType = com.pgms.billing.InvoiceType.RENT
                               and i.billingMonth = :monthStart
-                              and i.status <> com.pgms.billing.InvoiceStatus.VOID)
+                              and i.status <> com.pgms.billing.InvoiceStatus.VOID
+                              and not exists (select 1 from Allocation e where e.id = i.allocationId
+                                              and e.endReason = com.pgms.booking.EndReason.CHECK_OUT
+                                              and e.endDate <= i.periodStart))
             order by a.id
             """)
     List<Long> findUnbilledForMonth(@Param("monthStart") LocalDate monthStart);

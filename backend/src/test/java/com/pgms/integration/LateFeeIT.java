@@ -45,6 +45,31 @@ class LateFeeIT extends AbstractCollectionsIT {
                 + ",\"onMoveIn\":false}", "[1,3,7]", NO_UPI);
     }
 
+    /**
+     * After the move-out the settlement fixes what is still payable: neither the left-over rent nor the SETTLEMENT
+     * invoice (deductions) accrue late fees, and deposit adjustments never count as late payments.
+     */
+    @Test
+    void noLateFeesAfterTheMoveOutSettlement() {
+        flatPolicy("200", 0);
+        makeRegularRentDue(rentInvoiceId, 3, "9000");
+        markOverdue(rentInvoiceId);
+        fixtures.jdbc().update("UPDATE allocations SET start_date = ? WHERE id = ?", today.minusDays(20), allocationId);
+        Response checkOut = api.post("/api/v1/allocations/" + allocationId + "/check-out", adminToken, "{\"checkOutDate\":\""
+                + today + "\",\"deductions\":[{\"description\":\"Broken lamp\",\"amount\":500}]}");
+        assertThat(checkOut.status()).as("%s", checkOut.body()).isEqualTo(200);
+        long settlementInvoice = checkOut.body().at("/settlement/settlementInvoiceId").asLong();
+        fixtures.jdbc().update("UPDATE invoices SET due_date = ?, status = 'OVERDUE' WHERE id = ?", today.minusDays(5),
+                settlementInvoice);
+
+        runLateFees(today.plusDays(1));
+        runLateFees(today.plusDays(8));
+
+        assertThat(entries(rentInvoiceId)).isZero();
+        assertThat(entries(settlementInvoice)).isZero();
+        assertThat(lateFeeLines(settlementInvoice)).isEqualByComparingTo("0");
+    }
+
     @Test
     void flatLateFeeIsChargedOnceAfterTheGracePeriodAndRerunsAreIdempotent() {
         flatPolicy("200", 3);

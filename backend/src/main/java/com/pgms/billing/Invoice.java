@@ -172,6 +172,17 @@ public class Invoice extends AuditableEntity {
         recalculate(today);
     }
 
+    /**
+     * Shortens the billed period to end on {@code lastDay} (final month prorated at move-out). The amount is adjusted
+     * separately through a discount, so totals stay derived from line items.
+     */
+    void endPeriodOn(LocalDate lastDay) {
+        if (periodStart != null && lastDay.isBefore(periodStart)) {
+            throw new BusinessRuleException("INVALID_PERIOD", "Period cannot end before it starts");
+        }
+        this.periodEnd = lastDay;
+    }
+
     public boolean markOverdueIfDue(LocalDate today) {
         InvoiceStatus before = status;
         recalculate(today);

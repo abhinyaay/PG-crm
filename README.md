@@ -242,7 +242,9 @@ How "Rent" is modelled: the agreed rent is snapshotted on the **allocation**; mo
 | **Rooms & beds** | Room types with capacity rules, beds auto-generated from capacity, capacity changes (only free beds removed), bed state machine, maintenance toggling, availability search. Spaces of other kinds (halls/dormitories up to 50 beds, kitchens, washrooms, lounges ...), individually added/renamed/removed beds with optional per-bed prices. |
 | **Floor layout** | Per-floor grid editor: spaces placed as rectangles (bounds + overlap validated under a floor row lock, optimistic version per space), beds drawn inside spaces; one-call layout read. |
 | **Tenants** | Profile, emergency contacts, KYC document metadata (masked numbers only), status lifecycle, search (name/email/phone, `pg_trgm`), stay history, balance, portal login creation. |
-| **Booking & allocation** | Time-boxed reservations with automatic expiry, check-in (reserved or walk-in), check-out with deposit settlement, transfers across rooms/properties, notice period, full allocation history. |
+| **Booking & allocation** | Time-boxed reservations with automatic expiry, check-in (reserved or walk-in), check-out with deposit settlement (a stay must last at least one night), transfers across rooms/properties (a costlier room's deposit difference is invoiced), notice period, full allocation history. |
+| **Move-outs** | Per-property policy (notice period, shortfall rule, lock-in + penalty, final-month FULL/PRORATED, refund SLA, inspection checklist), resident-initiated notice from the portal with a cost preview, withdrawal, staff inspection checklist, settlement wizard (preview + complete) that persists the settlement, closing with optional write-off. |
+| **Deposits** | One deposit account per stay chain (first allocation + transfers): collected / held / applied / refunded figures, ledger, owner actions (refund, deduction, forfeit, top-up, all idempotent), refund-due tracking with an overdue alert job. |
 | **Billing** | Deposit + prorated first-month invoice at check-in, daily idempotent monthly rent generation, extra charges, discounts, void, overdue marking, due reminders, idempotent payments and refunds, PDF receipts, outstanding balance. |
 | **Maintenance** | Tenant/staff-raised tickets, category & priority, assignment to assigned staff, state machine, mandatory resolution notes, priority-based SLA, automatic breach flagging, status history. |
 | **Complaints** | Categories, priority, assignment, comments (internal staff-only notes hidden from tenants), resolution/reopen, manual and automatic escalation (3 levels), full timeline. |
@@ -276,6 +278,8 @@ How "Rent" is modelled: the agreed rent is snapshotted on the **allocation**; mo
 | `/tenants` | create, search, get, update, delete, `/me`, emergency contacts, documents, portal account, `/{id}/allocations`, `/{id}/balance` |
 | `/bookings` | reserve, search, get, cancel |
 | `/allocations` | `check-in`, `/{id}/check-out`, `/{id}/transfer`, `/{id}/notice`, search |
+| `/move-outs` | `preview`, create (notice), search, get, `/{id}/date`, `/{id}/withdraw`, `/{id}/inspection`, `/{id}/settlement-preview`, `/{id}/complete`, `/{id}/refund`, `/{id}/close`; policy at `/properties/{id}/moveout-policy` |
+| `/deposits` | list with totals, `/me`, `/{tenantId}` ledger, `/accounts/{id}/refund`, `/deductions`, `/forfeit`, `/top-up` |
 | `/invoices` | search, get, `/{id}/charges`, `/{id}/discounts`, `/{id}/void`, `generate` |
 | `/payments` | record (idempotent), search, get, `/{id}/receipt` (PDF), `/{id}/refunds` |
 | `/maintenance` | create, search, get, assign, status, history |
@@ -634,7 +638,10 @@ Being explicit about scope:
 * **KYC documents**: metadata only (masked number, verification status, storage key); no file upload to S3.
 * **Refunds do not reopen invoices**: they reduce net collected revenue (used for deposit returns). Reversing an
   erroneous rent payment (chargeback/reversal) is not modelled.
-* **Deposit difference on transfer** (moving to a room with a higher deposit) is not billed automatically.
+* **Deposit difference on transfer** is billed only when the transfer request carries `newSecurityDeposit` (or via the
+  Deposits tab top-up); the default still carries the old deposit over.
+* **Move-out**: the legacy `POST /allocations/{id}/check-out` persists the settlement but does not charge notice
+  shortfall / lock-in penalties (use the move-out workflow); no move-out statement PDF or T-3 reminders yet.
 * **No late fees by default**: managers can add `LATE_FEE` charges manually; automatic late-fee rules are future work.
 * **Terraform not yet applied**: `infra/terraform/` passes offline validation (validate/fmt/tflint/checkov/plan tests)
   but has never been applied to a real AWS account, so expect small fixes on the first apply.
@@ -648,7 +655,7 @@ Being explicit about scope:
 * Payment gateway integration (webhooks into the idempotent path) and online rent payment for tenants.
 * JWT key rotation (multiple keys in JWKS, `kid`-based selection), optional MFA for admins.
 * Outbox relay to SNS/SQS (or Debezium CDC) for external integrations; real SES/SNS senders.
-* Automatic late-fee policy per property, deposit top-up on transfer, payment reversals.
+* Automatic late-fee policy per property, payment reversals.
 * PostgreSQL row-level security as a second tenancy safety net; table partitioning for `audit_logs`/`notifications`.
 * Scheduled PDF/Excel reports and simple forecasting (seasonal occupancy) in the analytics service once enough history exists.
 * OpenTelemetry tracing across nginx → backend → analytics.

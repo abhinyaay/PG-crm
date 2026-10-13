@@ -67,6 +67,10 @@ public class LateFeeService {
                 || invoice.balance().signum() <= 0) {
             return Outcome.SKIPPED;
         }
+        if (!invoiceRepository.tenantHasActiveStay(invoice.getTenantId())) {
+            // moved out: the move-out settlement fixed what is still payable (deposit already applied); no more fees
+            return Outcome.SKIPPED;
+        }
         BillingPolicy policy = policyService.effectiveFor(invoice.getPropertyId());
         LateFeeCalculator.Assessment assessment = LateFeeCalculator.assess(policy, facts(invoice), today);
         if (!assessment.charges()) {

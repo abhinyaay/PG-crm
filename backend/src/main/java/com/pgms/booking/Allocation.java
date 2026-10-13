@@ -91,6 +91,11 @@ public class Allocation extends AuditableEntity {
         if (date.isBefore(startDate)) {
             throw new BusinessRuleException("INVALID_END_DATE", "End date cannot be before the start date " + startDate);
         }
+        if (reason == EndReason.CHECK_OUT && !date.isAfter(startDate)) {
+            // [d, d) is an empty range: it would escape the overlap constraints and keep rent billed for 0 nights
+            throw new BusinessRuleException("ZERO_LENGTH_STAY",
+                    "Check-out date must be after the check-in date " + startDate);
+        }
         endDate = date;
         endReason = reason;
         status = reason == EndReason.TRANSFER ? AllocationStatus.TRANSFERRED : AllocationStatus.ENDED;

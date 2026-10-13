@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.pgms.integration.Api.Response;
 import com.pgms.support.BusinessDates;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 
 /** One resident's full journey through the public API, verifying side effects at each step. */
@@ -44,18 +45,23 @@ class TenancyLifecycleIT extends AbstractIntegrationTest {
         assertThat(tenant.status()).isEqualTo(201);
         long tenantId = tenant.id();
 
-        String today = BusinessDates.today().toString();
+        LocalDate businessToday = BusinessDates.today();
+        String today = businessToday.toString();
+        // a stay must last at least one night: check in two days ago, transfer yesterday, check out today
+        String checkInDay = businessToday.minusDays(2).toString();
+        String transferDay = businessToday.minusDays(1).toString();
         Response booking = api.post("/api/v1/bookings", token, "{\"tenantId\":" + tenantId + ",\"bedId\":" + bed1
                 + ",\"expectedCheckInDate\":\"" + today + "\"}");
         assertThat(booking.status()).isEqualTo(201);
         assertThat(fixtures.bedStatus(bed1)).isEqualTo("RESERVED");
 
         Response checkIn = api.post("/api/v1/allocations/check-in", token, "{\"tenantId\":" + tenantId + ",\"bookingId\":"
-                + booking.id() + ",\"checkInDate\":\"" + today + "\"}");
+                + booking.id() + ",\"checkInDate\":\"" + checkInDay + "\"}");
         assertThat(checkIn.status()).isEqualTo(201);
         long allocationId = checkIn.body().at("/allocation/id").asLong();
         assertThat(fixtures.bedStatus(bed1)).isEqualTo("OCCUPIED");
-        assertThat(checkIn.body().get("invoices")).hasSize(2); // deposit + (prorated) first month
+        // deposit + (prorated) first month, plus the current month when the back-dated stay crosses a month boundary
+        assertThat(checkIn.body().get("invoices").size()).isBetween(2, 3);
         assertThat(api.get("/api/v1/bookings/" + booking.id(), token).body().get("status").asText()).isEqualTo("CHECKED_IN");
 
         JsonNode balance = api.get("/api/v1/tenants/" + tenantId + "/balance", token).body();
@@ -68,7 +74,7 @@ class TenancyLifecycleIT extends AbstractIntegrationTest {
                 .isEqualByComparingTo("24000");
 
         Response transfer = api.post("/api/v1/allocations/" + allocationId + "/transfer", token,
-                "{\"targetBedId\":" + bed2 + ",\"transferDate\":\"" + today + "\"}");
+                "{\"targetBedId\":" + bed2 + ",\"transferDate\":\"" + transferDay + "\"}");
         assertThat(transfer.status()).isEqualTo(200);
         assertThat(transfer.body().at("/previous/status").asText()).isEqualTo("TRANSFERRED");
         long newAllocation = transfer.body().at("/current/id").asLong();
@@ -76,7 +82,7 @@ class TenancyLifecycleIT extends AbstractIntegrationTest {
         assertThat(fixtures.bedStatus(bed2)).isEqualTo("OCCUPIED");
 
         assertThat(api.post("/api/v1/allocations/" + newAllocation + "/notice", token,
-                "{\"expectedCheckOutDate\":\"" + BusinessDates.today().plusDays(10) + "\"}").status()).isEqualTo(200);
+                "{\"expectedCheckOutDate\":\"" + businessToday.plusDays(10) + "\"}").status()).isEqualTo(200);
         assertThat(api.get("/api/v1/tenants/" + tenantId, token).body().get("status").asText()).isEqualTo("ON_NOTICE");
 
         Response checkOut = api.post("/api/v1/allocations/" + newAllocation + "/check-out", token, "{\"checkOutDate\":\""

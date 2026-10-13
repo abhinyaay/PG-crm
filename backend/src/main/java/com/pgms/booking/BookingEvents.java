@@ -28,4 +28,12 @@ public final class BookingEvents {
     public record TenantTransferred(Long fromAllocationId, Long toAllocationId, Long organizationId, Long tenantId,
                                     Long fromBedId, Long toBedId, LocalDate transferDate) {
     }
+
+    /** Notice recorded through the allocation endpoint (the move-out module opens / updates the move-out case). */
+    public record NoticeGiven(Long allocationId, Long organizationId, Long propertyId, Long tenantId, LocalDate noticeDate,
+                              LocalDate expectedEndDate) {
+    }
+
+    public record NoticeWithdrawn(Long allocationId, Long organizationId, Long propertyId, Long tenantId) {
+    }
 }

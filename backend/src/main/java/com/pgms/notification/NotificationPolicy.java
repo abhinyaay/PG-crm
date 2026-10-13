@@ -108,6 +108,13 @@ public class NotificationPolicy {
         row(PASSWORD_RESET_OTP,       STAFF,     NONE,      MANDATORY,         MANDATORY);
         row(PASSWORD_CHANGED,         RESIDENT,  ON,        MANDATORY,         OFF);
         row(PASSWORD_CHANGED,         STAFF,     ON,        MANDATORY,         OFF);
+        // move-out & deposits (V6)
+        row(NotificationType.MOVE_OUT_REQUESTED,     RESIDENT,  ON,        ON,        ON);
+        row(NotificationType.MOVE_OUT_REQUESTED,     STAFF,     ON,        ON,        NONE);
+        row(NotificationType.MOVE_OUT_WITHDRAWN,     STAFF,     ON,        OFF,       NONE);
+        row(NotificationType.SETTLEMENT_FINALIZED,   RESIDENT,  MANDATORY, ON,        ON);
+        row(NotificationType.DEPOSIT_REFUND_ISSUED,  RESIDENT,  MANDATORY, ON,        ON);
+        row(NotificationType.DEPOSIT_REFUND_OVERDUE, STAFF,     ON,        ON,        OFF);
         // biometric gate: managers by in-app + email (SMS opt-in, needs a DLT template); the resident in-app only
         row(ACCESS_LIMIT_EXCEEDED,    STAFF,     ON,        ON,                OFF);
         row(ACCESS_LIMIT_EXCEEDED,    RESIDENT,  ON,        NONE,              NONE);

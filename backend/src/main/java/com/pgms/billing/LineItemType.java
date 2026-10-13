@@ -11,6 +11,7 @@ public enum LineItemType {
     DISCOUNT,
     PARKING,
     INTERNET,
+    /** Deduction from the deposit (cleaning, lock-in penalty, forfeiture, ...). */
     DEDUCTION,
     NOTICE_SHORTFALL,
     DAMAGE
