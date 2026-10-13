@@ -23,6 +23,7 @@ import com.pgms.security.CurrentUserProvider;
 import com.pgms.tenant.Tenant;
 import com.pgms.tenant.TenantRepository;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -101,11 +102,12 @@ public class PaymentClaimService {
         if (policy.upiVpa() == null) {
             throw new BusinessRuleException("UPI_NOT_CONFIGURED", "This property has no UPI id configured for payments");
         }
-        BigDecimal amount = requirePayable(invoice, requestedAmount == null ? invoice.balance() : requestedAmount);
+        BigDecimal amount = requirePayable(invoice, (requestedAmount == null ? invoice.balance() : requestedAmount)
+                .setScale(2, RoundingMode.HALF_UP));
         String payee = policy.upiPayeeName() != null ? policy.upiPayeeName()
                 : propertyRepository.findById(invoice.getPropertyId()).map(Property::getName).orElse("PG");
         String uri = UpiLinks.payUri(policy.upiVpa(), payee, amount, invoice.getInvoiceNumber());
-        return new PayLinkResponse(invoice.getId(), invoice.getInvoiceNumber(), amount.setScale(2), invoice.getCurrency(), payee,
+        return new PayLinkResponse(invoice.getId(), invoice.getInvoiceNumber(), amount, invoice.getCurrency(), payee,
                 policy.upiVpa(), uri, uri);
     }
 
