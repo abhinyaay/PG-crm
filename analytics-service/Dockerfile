@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- build stage: resolve and install dependencies into an isolated virtualenv ----
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -18,7 +18,7 @@ COPY requirements.txt .
 RUN pip install --only-binary=:all: -r requirements.txt
 
 # ---- runtime stage ----
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 LABEL org.opencontainers.image.title="pgms-analytics" \
       org.opencontainers.image.description="Read-only analytics service for the PG management platform"

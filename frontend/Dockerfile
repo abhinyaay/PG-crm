@@ -10,7 +10,7 @@ COPY . .
 RUN npm run build
 
 # ---------- runtime ----------
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.31-alpine AS runtime
 
 # Non-root friendly: the master process runs as the unprivileged `nginx` user (uid 101).
 # Docker (>= 20.10) sets net.ipv4.ip_unprivileged_port_start=0 inside containers, so port 80 still works.
