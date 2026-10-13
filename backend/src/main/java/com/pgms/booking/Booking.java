@@ -7,6 +7,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
@@ -48,6 +49,13 @@ public class Booking extends AuditableEntity {
     @Column(name = "cancellation_reason")
     private String cancellationReason;
 
+    /** Effective bed price at reservation time (bed override, else room price); NULL for pre-V4 reservations. */
+    @Column(name = "quoted_monthly_rent")
+    private BigDecimal quotedMonthlyRent;
+
+    @Column(name = "quoted_security_deposit")
+    private BigDecimal quotedSecurityDeposit;
+
     protected Booking() {
     }
 
@@ -82,6 +90,20 @@ public class Booking extends AuditableEntity {
     public void markCheckedIn() {
         requireReserved();
         status = BookingStatus.CHECKED_IN;
+    }
+
+    /** Locks in the price offered with the reservation; check-in charges it unless the operator overrides. */
+    public void quote(BigDecimal monthlyRent, BigDecimal securityDeposit) {
+        this.quotedMonthlyRent = monthlyRent;
+        this.quotedSecurityDeposit = securityDeposit;
+    }
+
+    public BigDecimal getQuotedMonthlyRent() {
+        return quotedMonthlyRent;
+    }
+
+    public BigDecimal getQuotedSecurityDeposit() {
+        return quotedSecurityDeposit;
     }
 
     private void requireReserved() {

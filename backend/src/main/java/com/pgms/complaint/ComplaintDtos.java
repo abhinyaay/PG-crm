@@ -1,6 +1,7 @@
 package com.pgms.complaint;
 
 import com.pgms.common.domain.Priority;
+import com.pgms.common.lookup.DisplayNames;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -34,12 +35,14 @@ public final class ComplaintDtos {
     public record ComplaintResponse(Long id, String complaintNumber, Long propertyId, Long tenantId, Long raisedByUserId,
                                     ComplaintCategory category, Priority priority, String subject, String description,
                                     ComplaintStatus status, Long assignedToUserId, int escalationLevel, Instant escalatedAt,
-                                    Instant dueAt, String resolution, Instant resolvedAt, Instant closedAt, Instant createdAt) {
-        static ComplaintResponse of(Complaint c) {
+                                    Instant dueAt, String resolution, Instant resolvedAt, Instant closedAt, Instant createdAt,
+                                    String tenantName, String raisedByName, String assignedToName) {
+        static ComplaintResponse of(Complaint c, DisplayNames.Index names) {
             return new ComplaintResponse(c.getId(), c.getComplaintNumber(), c.getPropertyId(), c.getTenantId(),
                     c.getRaisedByUserId(), c.getCategory(), c.getPriority(), c.getSubject(), c.getDescription(), c.getStatus(),
                     c.getAssignedToUserId(), c.getEscalationLevel(), c.getEscalatedAt(), c.getDueAt(), c.getResolution(),
-                    c.getResolvedAt(), c.getClosedAt(), c.getCreatedAt());
+                    c.getResolvedAt(), c.getClosedAt(), c.getCreatedAt(), names.tenant(c.getTenantId()),
+                    names.user(c.getRaisedByUserId()), names.user(c.getAssignedToUserId()));
         }
     }
 

@@ -3,6 +3,7 @@ package com.pgms.booking;
 import com.pgms.billing.BillingDtos.Deduction;
 import com.pgms.billing.BillingDtos.InvoiceSummary;
 import com.pgms.billing.BillingDtos.SettlementSummary;
+import com.pgms.common.lookup.DisplayNames;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -33,13 +34,17 @@ public final class BookingDtos {
     public record CancelBookingRequest(@NotBlank @Size(max = 255) String reason) {
     }
 
+    /** {@code quotedMonthlyRent}/{@code quotedSecurityDeposit}: price locked in at reservation (bed override or room price). */
     public record BookingResponse(Long id, String bookingReference, Long propertyId, Long tenantId, Long bedId,
                                   BookingStatus status, LocalDate expectedCheckInDate, Instant reservedUntil, String notes,
-                                  Instant cancelledAt, String cancellationReason, Instant createdAt) {
-        static BookingResponse of(Booking b) {
+                                  Instant cancelledAt, String cancellationReason, Instant createdAt, String tenantName,
+                                  String roomNumber, String bedCode, BigDecimal quotedMonthlyRent,
+                                  BigDecimal quotedSecurityDeposit) {
+        static BookingResponse of(Booking b, DisplayNames.Index names) {
             return new BookingResponse(b.getId(), b.getBookingReference(), b.getPropertyId(), b.getTenantId(), b.getBedId(),
                     b.getStatus(), b.getExpectedCheckInDate(), b.getReservedUntil(), b.getNotes(), b.getCancelledAt(),
-                    b.getCancellationReason(), b.getCreatedAt());
+                    b.getCancellationReason(), b.getCreatedAt(), names.tenant(b.getTenantId()), names.roomNumber(b.getBedId()),
+                    names.bedCode(b.getBedId()), b.getQuotedMonthlyRent(), b.getQuotedSecurityDeposit());
         }
     }
 
@@ -71,11 +76,13 @@ public final class BookingDtos {
     public record AllocationResponse(Long id, Long propertyId, Long tenantId, Long bedId, Long bookingId,
                                      Long previousAllocationId, AllocationStatus status, LocalDate startDate,
                                      LocalDate endDate, LocalDate noticeDate, LocalDate expectedEndDate, EndReason endReason,
-                                     BigDecimal monthlyRent, BigDecimal securityDeposit) {
-        static AllocationResponse of(Allocation a) {
+                                     BigDecimal monthlyRent, BigDecimal securityDeposit, String tenantName, String roomNumber,
+                                     String bedCode) {
+        static AllocationResponse of(Allocation a, DisplayNames.Index names) {
             return new AllocationResponse(a.getId(), a.getPropertyId(), a.getTenantId(), a.getBedId(), a.getBookingId(),
                     a.getPreviousAllocationId(), a.getStatus(), a.getStartDate(), a.getEndDate(), a.getNoticeDate(),
-                    a.getExpectedEndDate(), a.getEndReason(), a.getMonthlyRent(), a.getSecurityDeposit());
+                    a.getExpectedEndDate(), a.getEndReason(), a.getMonthlyRent(), a.getSecurityDeposit(),
+                    names.tenant(a.getTenantId()), names.roomNumber(a.getBedId()), names.bedCode(a.getBedId()));
         }
     }
 

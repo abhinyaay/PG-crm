@@ -19,4 +19,14 @@ public enum RoomType {
     public boolean allowsCapacity(int capacity) {
         return capacity >= minCapacity && capacity <= maxCapacity;
     }
+
+    /** The sharing type matching a bed count, used when beds are added to / removed from a ROOM one at a time. */
+    public static RoomType forCapacity(int capacity) {
+        for (RoomType type : values()) {
+            if (type.allowsCapacity(capacity)) {
+                return type;
+            }
+        }
+        throw new IllegalArgumentException("No room type holds " + capacity + " beds");
+    }
 }

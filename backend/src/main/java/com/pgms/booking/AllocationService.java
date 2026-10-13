@@ -17,6 +17,7 @@ import com.pgms.common.exception.BadRequestException;
 import com.pgms.common.exception.BusinessRuleException;
 import com.pgms.common.exception.ConflictException;
 import com.pgms.common.exception.NotFoundException;
+import com.pgms.common.lookup.DisplayNames;
 import com.pgms.property.Property;
 import com.pgms.room.Bed;
 import com.pgms.room.BedRepository;
@@ -68,13 +69,14 @@ public class AllocationService {
     private final AuditService auditService;
     private final ApplicationEventPublisher events;
     private final MeterRegistry meterRegistry;
+    private final DisplayNames displayNames;
     private final Clock clock;
 
     public AllocationService(AllocationRepository allocationRepository, BookingRepository bookingRepository,
                              BedRepository bedRepository, TenantRepository tenantRepository, TenantService tenantService,
                              BookingService bookingService, InvoiceService invoiceService, AccessGuard accessGuard,
                              AuditService auditService, ApplicationEventPublisher events, MeterRegistry meterRegistry,
-                             Clock clock) {
+                             DisplayNames displayNames, Clock clock) {
         this.allocationRepository = allocationRepository;
         this.bookingRepository = bookingRepository;
         this.bedRepository = bedRepository;
@@ -86,6 +88,7 @@ public class AllocationService {
         this.auditService = auditService;
         this.events = events;
         this.meterRegistry = meterRegistry;
+        this.displayNames = displayNames;
         this.clock = clock;
     }
 
@@ -131,8 +134,12 @@ public class AllocationService {
         Property property = bookingService.requireBookable(bed, tenant);
         bed.occupy(booking != null);
 
-        BigDecimal rent = request.monthlyRent() != null ? request.monthlyRent() : bed.getRoom().getMonthlyRent();
-        BigDecimal deposit = request.securityDeposit() != null ? request.securityDeposit() : bed.getRoom().getSecurityDeposit();
+        // price precedence: explicit override in the request > price quoted with the reservation > the bed's own price
+        // (its per-bed override, else the room's price)
+        BigDecimal rent = firstNonNull(request.monthlyRent(), booking == null ? null : booking.getQuotedMonthlyRent(),
+                bed.effectiveMonthlyRent());
+        BigDecimal deposit = firstNonNull(request.securityDeposit(), booking == null ? null : booking.getQuotedSecurityDeposit(),
+                bed.effectiveSecurityDeposit());
         Allocation allocation = allocationRepository.saveAndFlush(new Allocation(property.getOrganizationId(), property.getId(),
                 tenant.getId(), bed.getId(), booking == null ? null : booking.getId(), null, request.checkInDate(), rent, deposit));
         if (booking != null) {
@@ -151,7 +158,7 @@ public class AllocationService {
         events.publishEvent(new BookingEvents.TenantCheckedIn(allocation.getId(), property.getOrganizationId(), property.getId(),
                 tenant.getId(), bed.getId(), request.checkInDate()));
         meterRegistry.counter("pgms.allocations.checked_in", "walk_in", String.valueOf(booking == null)).increment();
-        return new CheckInResponse(AllocationResponse.of(allocation), invoices);
+        return new CheckInResponse(respond(allocation), invoices);
     }
 
     @Transactional
@@ -180,7 +187,7 @@ public class AllocationService {
         events.publishEvent(new BookingEvents.TenantCheckedOut(allocationId, allocation.getOrganizationId(),
                 allocation.getPropertyId(), tenant.getId(), bed.getId(), request.checkOutDate()));
         meterRegistry.counter("pgms.allocations.checked_out").increment();
-        return new CheckOutResponse(AllocationResponse.of(allocation), settlement);
+        return new CheckOutResponse(respond(allocation), settlement);
     }
 
     /**
@@ -214,7 +221,7 @@ public class AllocationService {
         current.end(request.transferDate(), EndReason.TRANSFER);
         allocationRepository.saveAndFlush(current);
 
-        BigDecimal rent = request.newMonthlyRent() != null ? request.newMonthlyRent() : targetBed.getRoom().getMonthlyRent();
+        BigDecimal rent = request.newMonthlyRent() != null ? request.newMonthlyRent() : targetBed.effectiveMonthlyRent();
         Allocation next = new Allocation(current.getOrganizationId(), targetProperty.getId(), tenant.getId(), targetBed.getId(),
                 null, current.getId(), request.transferDate(), rent, current.getSecurityDeposit());
         next.inheritNotice(current);
@@ -229,7 +236,8 @@ public class AllocationService {
         events.publishEvent(new BookingEvents.TenantTransferred(current.getId(), next.getId(), current.getOrganizationId(),
                 tenant.getId(), currentBed.getId(), targetBed.getId(), request.transferDate()));
         meterRegistry.counter("pgms.allocations.transferred").increment();
-        return new TransferResponse(AllocationResponse.of(current), AllocationResponse.of(next));
+        DisplayNames.Index names = names(List.of(current, next));
+        return new TransferResponse(AllocationResponse.of(current, names), AllocationResponse.of(next, names));
     }
 
     @Transactional
@@ -244,7 +252,7 @@ public class AllocationService {
         tenant.giveNotice();
         auditService.record(allocation.getOrganizationId(), "NOTICE_GIVEN", "ALLOCATION", allocationId,
                 Map.of("expectedCheckOutDate", expectedCheckOutDate.toString()));
-        return AllocationResponse.of(allocation);
+        return respond(allocation);
     }
 
     @Transactional
@@ -254,28 +262,28 @@ public class AllocationService {
         allocation.clearNotice();
         tenant.withdrawNotice();
         auditService.record(allocation.getOrganizationId(), "NOTICE_WITHDRAWN", "ALLOCATION", allocationId);
-        return AllocationResponse.of(allocation);
+        return respond(allocation);
     }
 
     @Transactional(readOnly = true)
     public AllocationResponse get(Long id) {
         Allocation allocation = allocationRepository.findById(id).orElseThrow(() -> new NotFoundException("Allocation", id));
         requireReadAccess(allocation);
-        return AllocationResponse.of(allocation);
+        return respond(allocation);
     }
 
     /** Full stay history of a tenant (including transfers), newest first. */
     @Transactional(readOnly = true)
     public List<AllocationResponse> tenantHistory(Long tenantId) {
         tenantService.loadAccessible(tenantId);
-        return allocationRepository.findByTenantIdOrderByStartDateDesc(tenantId).stream().map(AllocationResponse::of).toList();
+        return respond(allocationRepository.findByTenantIdOrderByStartDateDesc(tenantId));
     }
 
     @Transactional(readOnly = true)
     public List<AllocationResponse> bedHistory(Long bedId) {
         Bed bed = bedRepository.findById(bedId).orElseThrow(() -> new NotFoundException("Bed", bedId));
         accessGuard.requirePropertyAccess(bed.getPropertyId());
-        return allocationRepository.findByBedIdOrderByStartDateDesc(bedId).stream().map(AllocationResponse::of).toList();
+        return respond(allocationRepository.findByBedIdOrderByStartDateDesc(bedId));
     }
 
     @Transactional(readOnly = true)
@@ -284,7 +292,7 @@ public class AllocationService {
         AccessScope scope = accessGuard.scopeFor(propertyId);
         Pageable page = SortValidator.validate(pageable, SORTABLE, Sort.by(Sort.Direction.DESC, "startDate"));
         if (scope.isEmpty()) {
-            return PageResponse.from(Page.<Allocation>empty(page), AllocationResponse::of);
+            return PageResponse.from(Page.<Allocation>empty(page), a -> AllocationResponse.of(a, DisplayNames.Index.EMPTY));
         }
         Specification<Allocation> spec = scope.toSpecification();
         if (tenantId != null) {
@@ -299,7 +307,33 @@ public class AllocationService {
         if (expectedEndBefore != null) {
             spec = spec.and((root, q, cb) -> cb.lessThanOrEqualTo(root.get("expectedEndDate"), expectedEndBefore));
         }
-        return PageResponse.from(allocationRepository.findAll(spec, page), AllocationResponse::of);
+        Page<Allocation> allocations = allocationRepository.findAll(spec, page);
+        DisplayNames.Index names = names(allocations.getContent());
+        return PageResponse.from(allocations, a -> AllocationResponse.of(a, names));
+    }
+
+    private AllocationResponse respond(Allocation allocation) {
+        return AllocationResponse.of(allocation, names(List.of(allocation)));
+    }
+
+    private List<AllocationResponse> respond(List<Allocation> allocations) {
+        DisplayNames.Index names = names(allocations);
+        return allocations.stream().map(a -> AllocationResponse.of(a, names)).toList();
+    }
+
+    /** Tenant names and bed/room codes for a list of allocations in two queries. */
+    private DisplayNames.Index names(List<Allocation> allocations) {
+        return displayNames.lookup(DisplayNames.ids(allocations, Allocation::getTenantId), Set.of(),
+                DisplayNames.ids(allocations, Allocation::getBedId));
+    }
+
+    private static BigDecimal firstNonNull(BigDecimal... candidates) {
+        for (BigDecimal candidate : candidates) {
+            if (candidate != null) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     /**

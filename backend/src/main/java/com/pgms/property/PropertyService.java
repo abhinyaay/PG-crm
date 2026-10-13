@@ -171,7 +171,10 @@ public class PropertyService {
     public FloorResponse addFloor(Long propertyId, Long buildingId, CreateFloorRequest request) {
         Property property = loadAccessible(propertyId);
         Building building = loadBuilding(propertyId, buildingId);
-        Floor floor = floorRepository.save(new Floor(building, request.floorNumber(), request.label()));
+        Floor floor = new Floor(building, request.floorNumber(), request.label());
+        floor.resizeGrid(request.gridCols() == null ? Floor.DEFAULT_GRID_COLS : request.gridCols(),
+                request.gridRows() == null ? Floor.DEFAULT_GRID_ROWS : request.gridRows());
+        floorRepository.save(floor);
         auditService.record(property.getOrganizationId(), "FLOOR_CREATED", "FLOOR", floor.getId());
         return FloorResponse.of(floor);
     }

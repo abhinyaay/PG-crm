@@ -10,6 +10,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.Instant;
 import org.hibernate.annotations.SQLRestriction;
 
@@ -42,6 +43,23 @@ public class Bed extends AuditableEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private BedStatus status = BedStatus.AVAILABLE;
+
+    /** Free-text name shown on the layout (e.g. "Window side"); the short {@code bedCode} stays the identifier. */
+    private String label;
+
+    /** Per-bed price; when set it replaces the room's price for new reservations, check-ins and transfers. */
+    @Column(name = "monthly_rent_override")
+    private BigDecimal monthlyRentOverride;
+
+    @Column(name = "security_deposit_override")
+    private BigDecimal securityDepositOverride;
+
+    /** Optional drawing position inside the space (both set or both null). */
+    @Column(name = "pos_x")
+    private Integer posX;
+
+    @Column(name = "pos_y")
+    private Integer posY;
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
@@ -87,10 +105,41 @@ public class Bed extends AuditableEntity {
     }
 
     public void softDelete(Instant at) {
-        if (status == BedStatus.OCCUPIED || status == BedStatus.RESERVED) {
+        if (isInUse()) {
             throw new ConflictException("BED_IN_USE", "Bed " + bedCode + " is " + status + " and cannot be removed");
         }
         deletedAt = at;
+    }
+
+    public void rename(String bedCode) {
+        this.bedCode = bedCode;
+    }
+
+    public void relabel(String label) {
+        this.label = label;
+    }
+
+    public void overridePrice(BigDecimal monthlyRentOverride, BigDecimal securityDepositOverride) {
+        this.monthlyRentOverride = monthlyRentOverride;
+        this.securityDepositOverride = securityDepositOverride;
+    }
+
+    public void position(Integer posX, Integer posY) {
+        this.posX = posX;
+        this.posY = posY;
+    }
+
+    /** Rent a new occupant of this bed is charged unless the operator overrides it at check-in. */
+    public BigDecimal effectiveMonthlyRent() {
+        return monthlyRentOverride != null ? monthlyRentOverride : room.getMonthlyRent();
+    }
+
+    public BigDecimal effectiveSecurityDeposit() {
+        return securityDepositOverride != null ? securityDepositOverride : room.getSecurityDeposit();
+    }
+
+    public boolean isInUse() {
+        return status == BedStatus.OCCUPIED || status == BedStatus.RESERVED;
     }
 
     private void requireStatus(BedStatus expected, String action) {
@@ -114,5 +163,25 @@ public class Bed extends AuditableEntity {
 
     public BedStatus getStatus() {
         return status;
+    }
+
+    public String getLabel() {
+        return label;
+    }
+
+    public BigDecimal getMonthlyRentOverride() {
+        return monthlyRentOverride;
+    }
+
+    public BigDecimal getSecurityDepositOverride() {
+        return securityDepositOverride;
+    }
+
+    public Integer getPosX() {
+        return posX;
+    }
+
+    public Integer getPosY() {
+        return posY;
     }
 }

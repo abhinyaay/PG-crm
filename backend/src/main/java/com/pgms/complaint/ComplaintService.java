@@ -8,6 +8,7 @@ import com.pgms.common.exception.BadRequestException;
 import com.pgms.common.exception.BusinessRuleException;
 import com.pgms.common.exception.ForbiddenException;
 import com.pgms.common.exception.NotFoundException;
+import com.pgms.common.lookup.DisplayNames;
 import com.pgms.common.util.ReferenceNumberGenerator;
 import com.pgms.complaint.ComplaintDtos.ActivityResponse;
 import com.pgms.complaint.ComplaintDtos.CommentResponse;
@@ -50,12 +51,13 @@ public class ComplaintService {
     private final AccessGuard accessGuard;
     private final AuditService auditService;
     private final ApplicationEventPublisher events;
+    private final DisplayNames displayNames;
     private final Clock clock;
 
     public ComplaintService(ComplaintRepository repository, ComplaintCommentRepository commentRepository,
                             ComplaintActivityRepository activityRepository, PropertyRepository propertyRepository,
                             UserRepository userRepository, ReferenceNumberGenerator referenceNumbers, AccessGuard accessGuard,
-                            AuditService auditService, ApplicationEventPublisher events, Clock clock) {
+                            AuditService auditService, ApplicationEventPublisher events, DisplayNames displayNames, Clock clock) {
         this.repository = repository;
         this.commentRepository = commentRepository;
         this.activityRepository = activityRepository;
@@ -65,6 +67,7 @@ public class ComplaintService {
         this.accessGuard = accessGuard;
         this.auditService = auditService;
         this.events = events;
+        this.displayNames = displayNames;
         this.clock = clock;
     }
 
@@ -94,7 +97,7 @@ public class ComplaintService {
         auditService.record(organizationId, "COMPLAINT_CREATED", "COMPLAINT", complaint.getId(),
                 Map.of("category", request.category().name(), "priority", request.priority().name()));
         publish(complaint, ComplaintActivityType.CREATED, true);
-        return ComplaintResponse.of(complaint);
+        return respond(complaint);
     }
 
     @Transactional
@@ -114,7 +117,7 @@ public class ComplaintService {
         auditService.record(complaint.getOrganizationId(), "COMPLAINT_ASSIGNED", "COMPLAINT", id,
                 Map.of("assigneeUserId", assigneeUserId));
         publish(complaint, ComplaintActivityType.ASSIGNED, false);
-        return ComplaintResponse.of(complaint);
+        return respond(complaint);
     }
 
     @Transactional
@@ -137,7 +140,7 @@ public class ComplaintService {
         auditService.record(complaint.getOrganizationId(), "COMPLAINT_STATUS_CHANGED", "COMPLAINT", id,
                 Map.of("from", previous.name(), "to", target.name()));
         publish(complaint, ComplaintActivityType.STATUS_CHANGED, true);
-        return ComplaintResponse.of(complaint);
+        return respond(complaint);
     }
 
     @Transactional
@@ -149,7 +152,7 @@ public class ComplaintService {
             throw new BusinessRuleException("NOT_OVERDUE", "Tenants can escalate only after the resolution deadline has passed");
         }
         doEscalate(complaint, user.id(), reason, false);
-        return ComplaintResponse.of(complaint);
+        return respond(complaint);
     }
 
     /** Automatic escalation of an overdue complaint (own transaction; called by {@link ComplaintEscalationJob}). */
@@ -204,7 +207,7 @@ public class ComplaintService {
     public ComplaintResponse get(Long id) {
         Complaint complaint = repository.findById(id).orElseThrow(() -> new NotFoundException("Complaint", id));
         requireReadAccess(complaint, accessGuard.currentUser());
-        return ComplaintResponse.of(complaint);
+        return respond(complaint);
     }
 
     @Transactional(readOnly = true)
@@ -220,7 +223,7 @@ public class ComplaintService {
         } else {
             AccessScope scope = accessGuard.scopeFor(propertyId);
             if (scope.isEmpty()) {
-                return PageResponse.from(Page.<Complaint>empty(page), ComplaintResponse::of);
+                return PageResponse.from(Page.<Complaint>empty(page), x -> ComplaintResponse.of(x, DisplayNames.Index.EMPTY));
             }
             spec = scope.toSpecification();
         }
@@ -239,7 +242,9 @@ public class ComplaintService {
         if (minEscalationLevel != null) {
             spec = spec.and((root, q, cb) -> cb.greaterThanOrEqualTo(root.get("escalationLevel"), minEscalationLevel));
         }
-        return PageResponse.from(repository.findAll(spec, page), ComplaintResponse::of);
+        Page<Complaint> rows = repository.findAll(spec, page);
+        DisplayNames.Index names = names(rows.getContent());
+        return PageResponse.from(rows, x -> ComplaintResponse.of(x, names));
     }
 
     private void doEscalate(Complaint complaint, Long actorId, String reason, boolean automatic) {
@@ -278,5 +283,15 @@ public class ComplaintService {
         events.publishEvent(new ComplaintEvents.ComplaintUpdated(complaint.getId(), complaint.getComplaintNumber(),
                 complaint.getOrganizationId(), complaint.getPropertyId(), complaint.getRaisedByUserId(),
                 complaint.getAssignedToUserId(), activity, complaint.getStatus(), visibleToTenant));
+    }
+
+    private ComplaintResponse respond(Complaint row) {
+        return ComplaintResponse.of(row, names(List.of(row)));
+    }
+
+    /** Tenant and user (raised by / assignee) names for a page in at most two queries. */
+    private DisplayNames.Index names(List<Complaint> rows) {
+        return displayNames.lookup(DisplayNames.ids(rows, Complaint::getTenantId),
+                DisplayNames.ids(rows, Complaint::getRaisedByUserId, Complaint::getAssignedToUserId), Set.of());
     }
 }
