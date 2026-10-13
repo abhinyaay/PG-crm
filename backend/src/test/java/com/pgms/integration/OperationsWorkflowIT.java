@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.pgms.integration.Api.Response;
-import java.time.LocalDate;
+import com.pgms.support.BusinessDates;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,7 +38,7 @@ class OperationsWorkflowIT extends AbstractIntegrationTest {
         staffToken = api.login(org.email("staff"));
         tenantToken = api.login(org.email("resident"));
         assertThat(api.post("/api/v1/allocations/check-in", managerToken, "{\"tenantId\":" + tenantId + ",\"bedId\":"
-                + layout.bedIds().get(0) + ",\"checkInDate\":\"" + LocalDate.now() + "\"}").status()).isEqualTo(201);
+                + layout.bedIds().get(0) + ",\"checkInDate\":\"" + BusinessDates.today() + "\"}").status()).isEqualTo(201);
     }
 
     @Test

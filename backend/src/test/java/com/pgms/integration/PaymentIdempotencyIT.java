@@ -3,7 +3,7 @@ package com.pgms.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.pgms.integration.Api.Response;
-import java.time.LocalDate;
+import com.pgms.support.BusinessDates;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -23,7 +23,7 @@ class PaymentIdempotencyIT extends AbstractIntegrationTest {
         token = api.login(org.email("admin"));
         long tenant = fixtures.tenant(org, layout.propertyId());
         Response checkIn = api.post("/api/v1/allocations/check-in", token, "{\"tenantId\":" + tenant + ",\"bedId\":"
-                + layout.bedIds().get(0) + ",\"checkInDate\":\"" + LocalDate.now() + "\"}");
+                + layout.bedIds().get(0) + ",\"checkInDate\":\"" + BusinessDates.today() + "\"}");
         assertThat(checkIn.status()).isEqualTo(201);
         checkIn.body().get("invoices").forEach(i -> {
             if (i.get("type").asText().equals("SECURITY_DEPOSIT")) {

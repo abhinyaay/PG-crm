@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.pgms.integration.Api.Response;
+import com.pgms.support.BusinessDates;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 
 /** One resident's full journey through the public API, verifying side effects at each step. */
@@ -44,7 +44,7 @@ class TenancyLifecycleIT extends AbstractIntegrationTest {
         assertThat(tenant.status()).isEqualTo(201);
         long tenantId = tenant.id();
 
-        String today = LocalDate.now().toString();
+        String today = BusinessDates.today().toString();
         Response booking = api.post("/api/v1/bookings", token, "{\"tenantId\":" + tenantId + ",\"bedId\":" + bed1
                 + ",\"expectedCheckInDate\":\"" + today + "\"}");
         assertThat(booking.status()).isEqualTo(201);
@@ -76,7 +76,7 @@ class TenancyLifecycleIT extends AbstractIntegrationTest {
         assertThat(fixtures.bedStatus(bed2)).isEqualTo("OCCUPIED");
 
         assertThat(api.post("/api/v1/allocations/" + newAllocation + "/notice", token,
-                "{\"expectedCheckOutDate\":\"" + LocalDate.now().plusDays(10) + "\"}").status()).isEqualTo(200);
+                "{\"expectedCheckOutDate\":\"" + BusinessDates.today().plusDays(10) + "\"}").status()).isEqualTo(200);
         assertThat(api.get("/api/v1/tenants/" + tenantId, token).body().get("status").asText()).isEqualTo("ON_NOTICE");
 
         Response checkOut = api.post("/api/v1/allocations/" + newAllocation + "/check-out", token, "{\"checkOutDate\":\""
@@ -110,7 +110,7 @@ class TenancyLifecycleIT extends AbstractIntegrationTest {
         long tenant = fixtures.tenant(org, layout.propertyId());
         long bed = layout.bedIds().get(0);
         long booking = api.post("/api/v1/bookings", token, "{\"tenantId\":" + tenant + ",\"bedId\":" + bed
-                + ",\"expectedCheckInDate\":\"" + LocalDate.now().plusDays(3) + "\",\"holdHours\":24}").id();
+                + ",\"expectedCheckInDate\":\"" + BusinessDates.today().plusDays(3) + "\",\"holdHours\":24}").id();
 
         assertThat(api.post("/api/v1/bookings/" + booking + "/cancel", token, "{\"reason\":\"Changed plans\"}").status())
                 .isEqualTo(200);

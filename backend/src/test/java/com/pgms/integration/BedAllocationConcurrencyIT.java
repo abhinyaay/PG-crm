@@ -3,7 +3,7 @@ package com.pgms.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.pgms.integration.Api.Response;
-import java.time.LocalDate;
+import com.pgms.support.BusinessDates;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -28,7 +28,7 @@ class BedAllocationConcurrencyIT extends AbstractIntegrationTest {
         for (int i = 0; i < CONTENDERS; i++) {
             long tenant = fixtures.tenant(org, layout.propertyId());
             tasks.add(() -> api.post("/api/v1/bookings", token, "{\"tenantId\":" + tenant + ",\"bedId\":" + bed
-                    + ",\"expectedCheckInDate\":\"" + LocalDate.now() + "\"}"));
+                    + ",\"expectedCheckInDate\":\"" + BusinessDates.today() + "\"}"));
         }
 
         List<Response> responses = ConcurrencySupport.runConcurrently(tasks);
@@ -52,7 +52,7 @@ class BedAllocationConcurrencyIT extends AbstractIntegrationTest {
         for (int i = 0; i < CONTENDERS; i++) {
             long tenant = fixtures.tenant(org, layout.propertyId());
             tasks.add(() -> api.post("/api/v1/allocations/check-in", token, "{\"tenantId\":" + tenant + ",\"bedId\":" + bed
-                    + ",\"checkInDate\":\"" + LocalDate.now() + "\"}"));
+                    + ",\"checkInDate\":\"" + BusinessDates.today() + "\"}"));
         }
 
         List<Response> responses = ConcurrencySupport.runConcurrently(tasks);
@@ -72,7 +72,7 @@ class BedAllocationConcurrencyIT extends AbstractIntegrationTest {
         Fixtures.PropertyLayout layout = fixtures.property(org, 2);
         fixtures.user(org, 2, "admin");
         String token = api.login(org.email("admin"));
-        String today = LocalDate.now().toString();
+        String today = BusinessDates.today().toString();
         long tenantA = fixtures.tenant(org, layout.propertyId());
         long tenantB = fixtures.tenant(org, layout.propertyId());
         long allocA = api.post("/api/v1/allocations/check-in", token, "{\"tenantId\":" + tenantA + ",\"bedId\":"
