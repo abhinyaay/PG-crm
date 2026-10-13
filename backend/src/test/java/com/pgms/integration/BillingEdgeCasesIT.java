@@ -121,7 +121,7 @@ class BillingEdgeCasesIT extends AbstractIntegrationTest {
     @Test
     void partiallyCollectedDepositIsSettledOnWhatWasActuallyPaid() {
         Response checkIn = api.post("/api/v1/allocations/check-in", token, "{\"tenantId\":" + tenantId + ",\"bedId\":"
-                + layout.bedIds().get(0) + ",\"checkInDate\":\"" + today + "\"}");
+                + layout.bedIds().get(0) + ",\"checkInDate\":\"" + today.minusDays(1) + "\"}");
         long allocation = checkIn.body().at("/allocation/id").asLong();
         for (JsonNode invoice : checkIn.body().get("invoices")) {
             boolean isDeposit = "SECURITY_DEPOSIT".equals(invoice.get("type").asText());

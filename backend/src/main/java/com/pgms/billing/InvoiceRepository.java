@@ -58,11 +58,17 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             """)
     List<Invoice> findOpenDueOn(@Param("dueDate") LocalDate dueDate);
 
-    /** Live rent invoices of a resident for one month, across all of their allocations. */
+    /**
+     * Live rent invoices of a resident for one month, across all of their allocations - except invoices for a period
+     * their stay never reached (checked out on/before the period start: credited back at move-out).
+     */
     @Query("""
             select i from Invoice i
             where i.tenantId = :tenantId and i.invoiceType = com.pgms.billing.InvoiceType.RENT
               and i.billingMonth = :billingMonth and i.status <> com.pgms.billing.InvoiceStatus.VOID
+              and not exists (select 1 from Allocation a where a.id = i.allocationId
+                              and a.endReason = com.pgms.booking.EndReason.CHECK_OUT
+                              and i.periodStart is not null and a.endDate <= i.periodStart)
             order by i.periodStart
             """)
     List<Invoice> findLiveRentForTenantMonth(@Param("tenantId") Long tenantId, @Param("billingMonth") LocalDate billingMonth);

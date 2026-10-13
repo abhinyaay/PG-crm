@@ -27,6 +27,17 @@ class AllocationTest {
         assertThat(b.getStatus()).isEqualTo(AllocationStatus.TRANSFERRED);
     }
 
+    /** [d, d) is an empty range: it escapes the overlap constraints, so a same-day check-out is rejected. */
+    @Test
+    void sameDayCheckOutIsRejectedButSameDayTransferIsAllowed() {
+        Allocation a = allocation();
+        assertThatThrownBy(() -> a.end(LocalDate.of(2026, 9, 1), EndReason.CHECK_OUT))
+                .isInstanceOf(BusinessRuleException.class).hasMessageContaining("after the check-in date");
+        Allocation b = allocation();
+        b.end(LocalDate.of(2026, 9, 1), EndReason.TRANSFER);
+        assertThat(b.getStatus()).isEqualTo(AllocationStatus.TRANSFERRED);
+    }
+
     @Test
     void cannotEndTwiceOrBeforeStart() {
         Allocation a = allocation();
