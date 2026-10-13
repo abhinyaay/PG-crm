@@ -1,0 +1,15 @@
+# Terraform working directories and local state
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfplan
+tfplan
+
+# Environment-specific inputs (may contain account IDs / emails); commit the *.example files instead
+*.tfvars
+!*.tfvars.example
+backend.hcl
+
+# Keep provider lock files (.terraform.lock.hcl) under version control.

@@ -1,0 +1,8 @@
+# Copy to backend.hcl (git-ignored) and fill in from `terraform -chdir=../../bootstrap output backend_config`.
+# Then: terraform init -backend-config=backend.hcl
+bucket         = "pgms-terraform-state-<ACCOUNT_ID>"
+key            = "prod/terraform.tfstate"
+region         = "ap-south-1"
+dynamodb_table = "pgms-terraform-locks"
+encrypt        = true
+kms_key_id     = "arn:aws:kms:ap-south-1:<ACCOUNT_ID>:key/<KEY_ID>"

@@ -103,6 +103,35 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  terraform:
+    name: Terraform - fmt, validate, test, lint, checkov
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - run: terraform fmt -check -recursive
+      - run: |
+          for r in bootstrap envs/prod; do
+            terraform -chdir=$r init -backend=false -input=false
+            terraform -chdir=$r validate
+          done
+          terraform -chdir=envs/prod test
+      - uses: terraform-linters/setup-tflint@v4
+      - run: tflint --init --config "$PWD/.tflint.hcl" && tflint --recursive --config "$PWD/.tflint.hcl"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra/terraform
+          framework: terraform
+          quiet: true
+
   e2e:
     name: Frontend - Playwright e2e (docker compose stack)
     needs: [frontend]
@@ -155,7 +184,7 @@ jobs:
 
   images:
     name: Docker images - build, scan, publish
-    needs: [backend, analytics, frontend, e2e]
+    needs: [backend, analytics, frontend, e2e, terraform]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -261,37 +290,62 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # Terraform owns the task-definition shape (env, secrets, sizing); CI only swaps the image
+      - name: Fetch current task definitions (shape owned by Terraform)
+        run: |
+          aws ecs describe-task-definition --task-definition "${{ vars.ECS_BACKEND_TASK_FAMILY }}"   --query taskDefinition > td-backend.json
+          aws ecs describe-task-definition --task-definition "${{ vars.ECS_ANALYTICS_TASK_FAMILY }}" --query taskDefinition > td-analytics.json
+          aws ecs describe-task-definition --task-definition "${{ vars.ECS_FRONTEND_TASK_FAMILY }}"  --query taskDefinition > td-frontend.json
       - name: Render backend task definition
         id: backend-td
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: infra/aws/ecs/backend-task-definition.json
+          task-definition: td-backend.json
           container-name: backend
           image: ${{ needs.images.outputs.backend-image }}
       - name: Render analytics task definition
         id: analytics-td
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: infra/aws/ecs/analytics-task-definition.json
+          task-definition: td-analytics.json
           container-name: analytics
           image: ${{ needs.images.outputs.analytics-image }}
+      - name: Render frontend task definition
+        id: frontend-td
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: td-frontend.json
+          container-name: frontend
+          image: ${{ needs.images.outputs.frontend-image }}
 
       # Backend first: its new tasks run Flyway (migrations must be backward compatible - expand/contract)
-      # before the analytics service, which reads the analytics.* views, is rolled.
       - name: Deploy backend (rolling, waits for healthy targets)
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.backend-td.outputs.task-definition }}
-          cluster: ${{ vars.ECS_CLUSTER || 'pgms-prod' }}
-          service: ${{ vars.ECS_BACKEND_SERVICE || 'pgms-backend' }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          service: ${{ vars.ECS_BACKEND_SERVICE }}
           wait-for-service-stability: true
       - name: Deploy analytics
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.analytics-td.outputs.task-definition }}
-          cluster: ${{ vars.ECS_CLUSTER || 'pgms-prod' }}
-          service: ${{ vars.ECS_ANALYTICS_SERVICE || 'pgms-analytics' }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          service: ${{ vars.ECS_ANALYTICS_SERVICE }}
           wait-for-service-stability: true
+      - name: Deploy frontend
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.frontend-td.outputs.task-definition }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          service: ${{ vars.ECS_FRONTEND_SERVICE }}
+          wait-for-service-stability: true
+      - name: Record deployed image tags (Terraform reads these)
+        run: |
+          for s in backend analytics frontend; do
+            aws ssm put-parameter --overwrite --type String \
+              --name "${{ vars.IMAGE_TAG_PARAMETER_PATH }}/$s" --value "${GITHUB_SHA::12}"
+          done
 
       - name: Post-deploy health check
         run: |

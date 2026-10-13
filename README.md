@@ -624,16 +624,15 @@ Being explicit about scope:
   erroneous rent payment (chargeback/reversal) is not modelled.
 * **Deposit difference on transfer** (moving to a room with a higher deposit) is not billed automatically.
 * **No late fees by default**: managers can add `LATE_FEE` charges manually; automatic late-fee rules are future work.
-* **Infrastructure as code**: AWS is documented and the ECS task definitions + CI deploy are provided, but the VPC,
-  RDS, ElastiCache and ALB are not provisioned by Terraform/CDK in this repository.
-* No frontend; Swagger UI and the smoke script are the clients.
+* **Terraform not yet applied**: `infra/terraform/` passes offline validation (validate/fmt/tflint/checkov/plan tests)
+  but has never been applied to a real AWS account, so expect small fixes on the first apply.
 * Analytics: Excel export, scheduled reports, forecasting and anomaly detection are designed-for extension points only.
 
 ---
 
 ## Future improvements
 
-* Terraform/CDK for the AWS stack; blue/green deployments with CodeDeploy.
+* Blue/green deployments with CodeDeploy; staging environment in Terraform.
 * Payment gateway integration (webhooks into the idempotent path) and online rent payment for tenants.
 * JWT key rotation (multiple keys in JWKS, `kid`-based selection), optional MFA for admins.
 * Outbox relay to SNS/SQS (or Debezium CDC) for external integrations; real SES/SNS senders.
