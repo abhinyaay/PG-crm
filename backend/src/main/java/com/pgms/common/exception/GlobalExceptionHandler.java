@@ -5,7 +5,9 @@ import com.pgms.common.web.RequestContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import org.slf4j.Logger;
@@ -37,6 +39,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final String IDEMPOTENCY_HEADER = "Idempotency-Key";
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiError> handleApi(ApiException ex, HttpServletRequest request) {
@@ -77,10 +80,31 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed", request, violations);
     }
 
-    @ExceptionHandler({MissingServletRequestParameterException.class, MissingRequestHeaderException.class,
-        MethodArgumentTypeMismatchException.class})
-    public ResponseEntity<ApiError> handleBadParameter(Exception ex, HttpServletRequest request) {
-        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", ex.getMessage(), request, List.of());
+    /** Spring's own messages name Java types ("for method parameter type Long"); clients get a plain sentence. */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiError> handleMissingParameter(MissingServletRequestParameterException ex,
+                                                           HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                "Required query parameter '" + ex.getParameterName() + "' is missing", request, List.of());
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiError> handleMissingHeader(MissingRequestHeaderException ex, HttpServletRequest request) {
+        if (IDEMPOTENCY_HEADER.equalsIgnoreCase(ex.getHeaderName())) {
+            return build(HttpStatus.BAD_REQUEST, "IDEMPOTENCY_KEY_REQUIRED",
+                    "The Idempotency-Key header is required for this request (send a new UUID per operation and "
+                            + "reuse it when retrying)", request, List.of());
+        }
+        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                "Required header '" + ex.getHeaderName() + "' is missing", request, List.of());
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+        String expected = describe(ex.getRequiredType());
+        String message = "Invalid value for '" + ex.getName() + "'" + (expected == null ? "" : ": expected " + expected);
+        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message, request,
+                List.of(new ApiError.FieldViolation(ex.getName(), message, safeValue(ex.getValue()))));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -137,6 +161,29 @@ public class GlobalExceptionHandler {
         ApiError body = new ApiError(Instant.now(), status.value(), status.getReasonPhrase(), code, message,
                 request.getRequestURI(), RequestContext.correlationId(), fieldErrors);
         return ResponseEntity.status(status).body(body);
+    }
+
+    /** Human description of a parameter type; never a Java class name. */
+    private static String describe(Class<?> type) {
+        if (type == null) {
+            return null;
+        }
+        if (type.isEnum()) {
+            return "one of " + Arrays.stream(type.getEnumConstants()).map(Object::toString).toList();
+        }
+        if (type == Boolean.class || type == boolean.class) {
+            return "true or false";
+        }
+        if (Number.class.isAssignableFrom(type) || type.isPrimitive()) {
+            return "a number";
+        }
+        if (type == LocalDate.class) {
+            return "a date (yyyy-MM-dd)";
+        }
+        if (type == Instant.class) {
+            return "a timestamp (ISO-8601, e.g. 2024-01-31T10:15:30Z)";
+        }
+        return null;
     }
 
     private static boolean isSensitive(String field) {
