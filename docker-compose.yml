@@ -143,8 +143,11 @@ services:
         condition: service_healthy
       frontend:
         condition: service_healthy
+    # mount the folder (not the single file): editors replace files, and a single-file bind mount would keep
+    # serving the old inode; with a folder, `docker compose exec nginx nginx -s reload` picks up edits
+    command: ["nginx", "-c", "/etc/nginx/pgms/nginx.conf", "-g", "daemon off;"]
     volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx:/etc/nginx/pgms:ro
     ports:
       - "${NGINX_HOST_PORT:-80}:80"
     healthcheck:
