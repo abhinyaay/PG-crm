@@ -47,7 +47,7 @@ CREATE TABLE property_billing_policies (
     CONSTRAINT ck_pbp_grace CHECK (grace_days BETWEEN 0 AND 31 AND move_in_grace_days BETWEEN 0 AND 31),
     CONSTRAINT ck_pbp_due_reminder CHECK (due_reminder_days_before BETWEEN 0 AND 15),
     CONSTRAINT ck_pbp_offsets CHECK (cardinality(overdue_reminder_offsets) <= 10),
-    CONSTRAINT ck_pbp_upi_vpa CHECK (upi_vpa IS NULL OR upi_vpa ~ '^[A-Za-z0-9._-]{2,256}@[A-Za-z0-9]{2,64}$')
+    CONSTRAINT ck_pbp_upi_vpa CHECK (upi_vpa IS NULL OR upi_vpa ~ '^[A-Za-z0-9._-]{2,255}@[A-Za-z0-9]{2,64}$')
 );
 CREATE INDEX idx_pbp_organization ON property_billing_policies (organization_id);
 

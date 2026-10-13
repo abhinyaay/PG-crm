@@ -18,7 +18,7 @@ import java.util.List;
 /** Request/response records of the collections features: billing policy, late fees, UPI pay links, claims, add-ons. */
 public final class CollectionsDtos {
 
-    static final String VPA_PATTERN = "^[A-Za-z0-9._-]{2,256}@[A-Za-z0-9]{2,64}$";
+    static final String VPA_PATTERN = "^[A-Za-z0-9._-]{2,255}@[A-Za-z0-9]{2,64}$";
 
     private CollectionsDtos() {
     }
