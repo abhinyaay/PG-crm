@@ -19,7 +19,8 @@ public class ReferenceNumberGenerator {
         RECEIPT("RCPT", "receipt_number_seq"),
         REFUND("RFD", "refund_reference_seq"),
         MAINTENANCE("MNT", "maintenance_ticket_seq"),
-        COMPLAINT("CMP", "complaint_number_seq");
+        COMPLAINT("CMP", "complaint_number_seq"),
+        PAYMENT_CLAIM("PCL", "payment_claim_seq");
 
         private final String prefix;
         private final String sequence;

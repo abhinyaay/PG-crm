@@ -70,7 +70,23 @@ class PaymentProcessor {
         Invoice invoice = invoiceRepository.findByIdForUpdate(request.invoiceId())
                 .orElseThrow(() -> new NotFoundException("Invoice", request.invoiceId()));
         accessGuard.requirePropertyAccess(invoice.getPropertyId());
+        return record(invoice, idempotencyKey, fingerprint, request);
+    }
 
+    /**
+     * Same as {@link #recordPayment} without the caller access check, for server-side flows that have no user or have
+     * authorised the caller themselves (AutoPay webhooks/jobs, verified payment claims).
+     */
+    @Transactional
+    public IdempotentResult<PaymentResponse> recordTrustedPayment(String idempotencyKey, String fingerprint,
+                                                                  RecordPaymentRequest request) {
+        Invoice invoice = invoiceRepository.findByIdForUpdate(request.invoiceId())
+                .orElseThrow(() -> new NotFoundException("Invoice", request.invoiceId()));
+        return record(invoice, idempotencyKey, fingerprint, request);
+    }
+
+    private IdempotentResult<PaymentResponse> record(Invoice invoice, String idempotencyKey, String fingerprint,
+                                                     RecordPaymentRequest request) {
         Optional<IdempotentResult<PaymentResponse>> replay = findPaymentReplay(invoice.getOrganizationId(), idempotencyKey,
                 fingerprint);
         if (replay.isPresent()) {

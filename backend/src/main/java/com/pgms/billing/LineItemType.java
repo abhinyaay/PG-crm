@@ -8,5 +8,10 @@ public enum LineItemType {
     LAUNDRY,
     LATE_FEE,
     OTHER,
-    DISCOUNT
+    DISCOUNT,
+    PARKING,
+    INTERNET,
+    DEDUCTION,
+    NOTICE_SHORTFALL,
+    DAMAGE
 }

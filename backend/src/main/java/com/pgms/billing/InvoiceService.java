@@ -56,13 +56,17 @@ public class InvoiceService {
     private final AuditService auditService;
     private final ApplicationEventPublisher events;
     private final DisplayNames displayNames;
+    private final BillingPolicyService billingPolicyService;
+    private final RecurringChargeService recurringChargeService;
     private final Clock clock;
 
     public InvoiceService(InvoiceRepository invoiceRepository, PaymentRepository paymentRepository,
                           AllocationRepository allocationRepository, PropertyRepository propertyRepository,
                           InvoiceFactory invoiceFactory, TenantService tenantService, AccessGuard accessGuard,
                           CurrentUserProvider currentUserProvider, AuditService auditService,
-                          ApplicationEventPublisher events, DisplayNames displayNames, Clock clock) {
+                          ApplicationEventPublisher events, DisplayNames displayNames,
+                          BillingPolicyService billingPolicyService,
+                          RecurringChargeService recurringChargeService, Clock clock) {
         this.invoiceRepository = invoiceRepository;
         this.paymentRepository = paymentRepository;
         this.allocationRepository = allocationRepository;
@@ -74,6 +78,8 @@ public class InvoiceService {
         this.auditService = auditService;
         this.events = events;
         this.displayNames = displayNames;
+        this.billingPolicyService = billingPolicyService;
+        this.recurringChargeService = recurringChargeService;
         this.clock = clock;
     }
 
@@ -91,7 +97,11 @@ public class InvoiceService {
         invoiceFactory.depositInvoice(allocation, allocation.getStartDate(), userId).ifPresent(issued::add);
         YearMonth current = YearMonth.from(today);
         for (YearMonth month = YearMonth.from(allocation.getStartDate()); !month.isAfter(current); month = month.plusMonths(1)) {
-            invoiceFactory.rentInvoice(allocation, month, rentDueDay, today, userId).ifPresent(issued::add);
+            YearMonth billed = month;
+            invoiceFactory.rentInvoice(allocation, month, rentDueDay, today, userId).ifPresent(invoice -> {
+                recurringChargeService.addRecurringLines(invoice, billed, userId);
+                issued.add(invoice);
+            });
         }
         invoiceRepository.saveAll(issued);
         issued.forEach(this::publishIssued);
@@ -112,6 +122,7 @@ public class InvoiceService {
                 .orElseThrow(() -> new NotFoundException("Property", allocation.getPropertyId()));
         return invoiceFactory.rentInvoice(allocation, month, property.getRentDueDay(), LocalDate.now(clock), null)
                 .map(invoice -> {
+                    recurringChargeService.addRecurringLines(invoice, month, null);
                     invoiceRepository.saveAndFlush(invoice);
                     publishIssued(invoice);
                     return true;
@@ -126,8 +137,9 @@ public class InvoiceService {
         if (invoice == null || !invoice.markOverdueIfDue(today)) {
             return false;
         }
-        events.publishEvent(new BillingEvents.PaymentDue(invoice.getId(), invoice.getInvoiceNumber(),
-                invoice.getOrganizationId(), invoice.getTenantId(), invoice.balance(), invoice.getDueDate(), true));
+        // same dedup key format (PAYMENT_OVERDUE:{id}:D{n}) as the D+n reminder job, so day 1 is never sent twice
+        events.publishEvent(CollectionReminderService.overdueEvent(invoice,
+                billingPolicyService.effectiveFor(invoice.getPropertyId()), today));
         return true;
     }
 
@@ -211,7 +223,8 @@ public class InvoiceService {
                 paymentRepository.depositHeldForTenant(tenantId), open);
     }
 
-    private String tenantName(Invoice invoice) {
+    /** Display name for responses (also used by other billing services). */
+    String tenantName(Invoice invoice) {
         return displayNames.tenants(List.of(invoice.getTenantId())).tenant(invoice.getTenantId());
     }
 
@@ -269,13 +282,14 @@ public class InvoiceService {
                 net.negate().max(BigDecimal.ZERO), items);
     }
 
-    private Invoice lockAccessible(Long id) {
+    Invoice lockAccessible(Long id) {
         Invoice invoice = invoiceRepository.findByIdForUpdate(id).orElseThrow(() -> new NotFoundException("Invoice", id));
         accessGuard.requirePropertyAccess(invoice.getPropertyId());
         return invoice;
     }
 
-    private void requireAccess(Invoice invoice) {
+    /** Tenants may only see their own invoices (404 otherwise); staff need access to the property. */
+    void requireAccess(Invoice invoice) {
         if (accessGuard.isTenant()) {
             if (!invoice.getTenantId().equals(accessGuard.requireCurrentTenant().getId())) {
                 throw new NotFoundException("Invoice", invoice.getId());

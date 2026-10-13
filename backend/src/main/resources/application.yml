@@ -151,6 +151,44 @@ app:
   billing:
     due-reminder-days-before: 3
     currency: INR
+  # Collections: defaults for properties without a stored billing policy (PUT /properties/{id}/billing-policy)
+  collections:
+    defaults:
+      late-fee-enabled: ${APP_LATE_FEE_DEFAULT_ENABLED:false}
+      late-fee-type: FLAT
+      late-fee-value: 0
+      grace-days: 0
+      # move-in invoices issued after the rent due day are due the day they are issued; they get this extra grace
+      move-in-grace-days: 7
+      late-fee-on-move-in: false
+      overdue-reminder-offsets: 1,5,10
+    claims:
+      # SUBMITTED claims older than this go into the daily PAYMENT_CLAIMS_PENDING digest
+      pending-sla: ${APP_PAYMENT_CLAIM_SLA:24h}
+    jobs:
+      late-fee-cron: ${APP_LATE_FEE_CRON:0 15 1 * * *}
+      overdue-reminder-cron: ${APP_OVERDUE_REMINDER_CRON:0 15 9 * * *}
+      overdue-digest-cron: ${APP_OVERDUE_DIGEST_CRON:0 30 9 * * *}
+      claim-sla-cron: ${APP_PAYMENT_CLAIM_SLA_CRON:0 0 10 * * *}
+  # AutoPay (recurring payments). provider: sandbox (default, fully simulated) | razorpay
+  payments:
+    autopay:
+      provider: ${APP_AUTOPAY_PROVIDER:sandbox}
+      max-attempts: 3
+      debit-cron: ${APP_AUTOPAY_DEBIT_CRON:0 0 11 * * *}
+      # how many days a debit may stay unconfirmed (no webhook) before the attempt is marked failed
+      confirmation-timeout-days: 2
+      sandbox:
+        # the in-app "Authorise" page of the simulated bank
+        authorisation-base-url: ${APP_PORTAL_URL:http://localhost:3000}/autopay/sandbox/authorise
+        webhook-secret: ${APP_AUTOPAY_SANDBOX_WEBHOOK_SECRET:sandbox-webhook-secret}
+      razorpay:
+        base-url: ${RAZORPAY_BASE_URL:https://api.razorpay.com}
+        key-id: ${RAZORPAY_KEY_ID:}
+        key-secret: ${RAZORPAY_KEY_SECRET:}
+        webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
+        connect-timeout: 3s
+        read-timeout: 15s
   notifications:
     dispatch-batch-size: 50
     max-attempts: 5
@@ -208,7 +246,7 @@ app:
           text: "{pg}: Reminder - Rs.{amt} due on {date} for invoice {inv}."
         PAYMENT_OVERDUE:
           dlt-template-id: ${SMS_DLT_PAYMENT_OVERDUE:}
-          text: "{pg}: Rs.{amt} on invoice {inv} was due on {date} and is overdue. Please pay now."
+          text: "{pg}: Rs.{amt} on invoice {inv} was due on {date} and is {days} days overdue. Please pay now."
         PAYMENT_RECEIVED:
           dlt-template-id: ${SMS_DLT_PAYMENT_RECEIVED:}
           text: "{pg}: Received Rs.{amt} for {inv}, receipt {rcpt}. Balance Rs.{bal}."
@@ -239,6 +277,21 @@ app:
         PASSWORD_CHANGED:
           dlt-template-id: ${SMS_DLT_PASSWORD_CHANGED:}
           text: "{pg}: Your password was changed at {time}. Not you? Contact the PG office."
+        LATE_FEE_APPLIED:
+          dlt-template-id: ${SMS_DLT_LATE_FEE_APPLIED:}
+          text: "{pg}: Late fee Rs.{fee} added to invoice {inv}. New balance Rs.{bal}."
+        LATE_FEE_WAIVED:
+          dlt-template-id: ${SMS_DLT_LATE_FEE_WAIVED:}
+          text: "{pg}: Late fee of Rs.{amt} waived on invoice {inv}."
+        PAYMENT_CLAIM_REJECTED:
+          dlt-template-id: ${SMS_DLT_PAYMENT_CLAIM_REJECTED:}
+          text: "{pg}: Your payment claim of Rs.{amt} (ref {ref}) was not verified: {reason}."
+        AUTOPAY_MANDATE_UPDATED:
+          dlt-template-id: ${SMS_DLT_AUTOPAY_MANDATE_UPDATED:}
+          text: "{pg}: Your AutoPay mandate is now {status}."
+        AUTOPAY_DEBIT_FAILED:
+          dlt-template-id: ${SMS_DLT_AUTOPAY_DEBIT_FAILED:}
+          text: "{pg}: AutoPay could not collect Rs.{amt} for invoice {inv}. {next}"
     # non-urgent SMS is held back overnight (business time zone)
     quiet-hours:
       enabled: ${APP_SMS_QUIET_HOURS_ENABLED:true}

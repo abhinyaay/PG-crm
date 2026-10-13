@@ -41,7 +41,8 @@ class InvoiceServiceTest {
         return new InvoiceService(mock(InvoiceRepository.class), mock(PaymentRepository.class),
                 mock(AllocationRepository.class), mock(PropertyRepository.class), new InvoiceFactory(numbers, properties, clock),
                 mock(TenantService.class), mock(AccessGuard.class), users, mock(AuditService.class),
-                mock(ApplicationEventPublisher.class), mock(DisplayNames.class), clock);
+                mock(ApplicationEventPublisher.class), mock(DisplayNames.class), mock(BillingPolicyService.class),
+                mock(RecurringChargeService.class), clock);
     }
 
     /** Jan 30 recorded on Mar 1 (31 days back): the daily job only bills March, so February must come from check-in. */

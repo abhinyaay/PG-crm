@@ -119,7 +119,9 @@ public class Invoice extends AuditableEntity {
         return status == InvoiceStatus.ISSUED || status == InvoiceStatus.PARTIALLY_PAID || status == InvoiceStatus.OVERDUE;
     }
 
-    public void addCharge(LineItemType type, String description, BigDecimal amount, Instant at, Long userId, LocalDate today) {
+    /** Adds a charge line and returns it (its id is assigned on flush). */
+    public InvoiceLineItem addCharge(LineItemType type, String description, BigDecimal amount, Instant at, Long userId,
+                                     LocalDate today) {
         requireNotVoid();
         if (type == LineItemType.DISCOUNT) {
             throw new BusinessRuleException("INVALID_CHARGE_TYPE", "Use applyDiscount for discounts");
@@ -131,19 +133,30 @@ public class Invoice extends AuditableEntity {
                     : "Security deposit lines belong on the deposit invoice");
         }
         requirePositive(amount);
-        lineItems.add(new InvoiceLineItem(this, type, description, amount, at, userId));
+        InvoiceLineItem line = new InvoiceLineItem(this, type, description, amount, at, userId);
+        lineItems.add(line);
         recalculate(today);
+        return line;
     }
 
-    public void applyDiscount(String description, BigDecimal amount, Instant at, Long userId, LocalDate today) {
+    /** Adds a discount line (never more than the balance) and returns it. */
+    public InvoiceLineItem applyDiscount(String description, BigDecimal amount, Instant at, Long userId, LocalDate today) {
         requireNotVoid();
         requirePositive(amount);
         if (amount.compareTo(balance()) > 0) {
             throw new BusinessRuleException("DISCOUNT_EXCEEDS_BALANCE",
                     "Discount " + amount + " exceeds the outstanding balance " + balance());
         }
-        lineItems.add(new InvoiceLineItem(this, LineItemType.DISCOUNT, description, amount, at, userId));
+        InvoiceLineItem line = new InvoiceLineItem(this, LineItemType.DISCOUNT, description, amount, at, userId);
+        lineItems.add(line);
         recalculate(today);
+        return line;
+    }
+
+    /** Sum of the lines of one type (e.g. RENT lines for a percent-of-rent late fee). */
+    public BigDecimal sumOf(LineItemType type) {
+        return lineItems.stream().filter(l -> l.getLineType() == type).map(InvoiceLineItem::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     /** Applies a payment; overpayment is rejected rather than silently creating credit. */
