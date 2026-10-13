@@ -8,6 +8,7 @@ import com.pgms.common.api.SortValidator;
 import com.pgms.common.exception.BusinessRuleException;
 import com.pgms.common.exception.ConflictException;
 import com.pgms.common.exception.NotFoundException;
+import com.pgms.common.lookup.DisplayNames;
 import com.pgms.common.util.ReferenceNumberGenerator;
 import com.pgms.config.AppProperties;
 import com.pgms.property.Property;
@@ -23,6 +24,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.context.ApplicationEventPublisher;
@@ -53,13 +55,14 @@ public class BookingService {
     private final AuditService auditService;
     private final ApplicationEventPublisher events;
     private final MeterRegistry meterRegistry;
+    private final DisplayNames displayNames;
     private final Duration defaultHold;
     private final Clock clock;
 
     public BookingService(BookingRepository bookingRepository, BedRepository bedRepository, TenantRepository tenantRepository,
                           PropertyRepository propertyRepository, ReferenceNumberGenerator referenceNumbers,
                           AccessGuard accessGuard, AuditService auditService, ApplicationEventPublisher events,
-                          MeterRegistry meterRegistry, AppProperties properties, Clock clock) {
+                          MeterRegistry meterRegistry, DisplayNames displayNames, AppProperties properties, Clock clock) {
         this.bookingRepository = bookingRepository;
         this.bedRepository = bedRepository;
         this.tenantRepository = tenantRepository;
@@ -69,6 +72,7 @@ public class BookingService {
         this.auditService = auditService;
         this.events = events;
         this.meterRegistry = meterRegistry;
+        this.displayNames = displayNames;
         this.defaultHold = properties.booking().reservationHold();
         this.clock = clock;
     }
@@ -96,9 +100,11 @@ public class BookingService {
 
         Duration hold = request.holdHours() == null ? defaultHold : Duration.ofHours(request.holdHours());
         Instant reservedUntil = clock.instant().plus(hold);
-        Booking booking = bookingRepository.save(new Booking(referenceNumbers.next(ReferenceNumberGenerator.Kind.BOOKING),
+        Booking booking = new Booking(referenceNumbers.next(ReferenceNumberGenerator.Kind.BOOKING),
                 property.getOrganizationId(), property.getId(), tenant.getId(), bed.getId(), request.expectedCheckInDate(),
-                reservedUntil, request.notes()));
+                reservedUntil, request.notes());
+        booking.quote(bed.effectiveMonthlyRent(), bed.effectiveSecurityDeposit());
+        bookingRepository.save(booking);
         tenant.relocateTo(property.getId());
 
         auditService.record(property.getOrganizationId(), "BED_RESERVED", "BOOKING", booking.getId(),
@@ -107,7 +113,7 @@ public class BookingService {
                 booking.getOrganizationId(), booking.getPropertyId(), tenant.getId(), bed.getId(),
                 booking.getExpectedCheckInDate(), reservedUntil));
         meterRegistry.counter("pgms.bookings.reserved").increment();
-        return BookingResponse.of(booking);
+        return respond(booking);
     }
 
     @Transactional
@@ -116,7 +122,7 @@ public class BookingService {
                 .orElseThrow(() -> new NotFoundException("Booking", bookingId));
         accessGuard.requirePropertyAccess(booking.getPropertyId());
         release(booking, BookingStatus.CANCELLED, reason);
-        return BookingResponse.of(booking);
+        return respond(booking);
     }
 
     /** Expires one reservation in its own transaction; a no-op if it was checked in or cancelled meanwhile. */
@@ -135,7 +141,7 @@ public class BookingService {
     public BookingResponse get(Long id) {
         Booking booking = bookingRepository.findById(id).orElseThrow(() -> new NotFoundException("Booking", id));
         accessGuard.requirePropertyAccess(booking.getPropertyId());
-        return BookingResponse.of(booking);
+        return respond(booking);
     }
 
     @Transactional(readOnly = true)
@@ -143,7 +149,7 @@ public class BookingService {
         AccessScope scope = accessGuard.scopeFor(propertyId);
         Pageable page = SortValidator.validate(pageable, SORTABLE, Sort.by(Sort.Direction.DESC, "createdAt"));
         if (scope.isEmpty()) {
-            return PageResponse.from(Page.<Booking>empty(page), BookingResponse::of);
+            return PageResponse.from(Page.<Booking>empty(page), b -> BookingResponse.of(b, DisplayNames.Index.EMPTY));
         }
         Specification<Booking> spec = scope.toSpecification();
         if (tenantId != null) {
@@ -152,7 +158,19 @@ public class BookingService {
         if (status != null) {
             spec = spec.and((root, q, cb) -> cb.equal(root.get("status"), status));
         }
-        return PageResponse.from(bookingRepository.findAll(spec, page), BookingResponse::of);
+        Page<Booking> bookings = bookingRepository.findAll(spec, page);
+        DisplayNames.Index names = names(bookings.getContent());
+        return PageResponse.from(bookings, b -> BookingResponse.of(b, names));
+    }
+
+    private BookingResponse respond(Booking booking) {
+        return BookingResponse.of(booking, names(List.of(booking)));
+    }
+
+    /** Tenant names and bed/room codes for a page of bookings in two queries. */
+    private DisplayNames.Index names(List<Booking> bookings) {
+        return displayNames.lookup(DisplayNames.ids(bookings, Booking::getTenantId), Set.of(),
+                DisplayNames.ids(bookings, Booking::getBedId));
     }
 
     private void release(Booking booking, BookingStatus outcome, String reason) {

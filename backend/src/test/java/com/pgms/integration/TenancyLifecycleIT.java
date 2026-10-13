@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.pgms.integration.Api.Response;
+import com.pgms.support.BusinessDates;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import org.junit.jupiter.api.Test;
 
 /** One resident's full journey through the public API, verifying side effects at each step. */
@@ -45,7 +45,7 @@ class TenancyLifecycleIT extends AbstractIntegrationTest {
         assertThat(tenant.status()).isEqualTo(201);
         long tenantId = tenant.id();
 
-        LocalDate businessToday = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+        LocalDate businessToday = BusinessDates.today();
         String today = businessToday.toString();
         // a stay must last at least one night: check in two days ago, transfer yesterday, check out today
         String checkInDay = businessToday.minusDays(2).toString();
@@ -116,7 +116,7 @@ class TenancyLifecycleIT extends AbstractIntegrationTest {
         long tenant = fixtures.tenant(org, layout.propertyId());
         long bed = layout.bedIds().get(0);
         long booking = api.post("/api/v1/bookings", token, "{\"tenantId\":" + tenant + ",\"bedId\":" + bed
-                + ",\"expectedCheckInDate\":\"" + LocalDate.now().plusDays(3) + "\",\"holdHours\":24}").id();
+                + ",\"expectedCheckInDate\":\"" + BusinessDates.today().plusDays(3) + "\",\"holdHours\":24}").id();
 
         assertThat(api.post("/api/v1/bookings/" + booking + "/cancel", token, "{\"reason\":\"Changed plans\"}").status())
                 .isEqualTo(200);

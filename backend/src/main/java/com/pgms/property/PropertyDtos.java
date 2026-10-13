@@ -98,12 +98,15 @@ public final class PropertyDtos {
         }
     }
 
-    public record CreateFloorRequest(@NotNull @Min(-5) @Max(200) Integer floorNumber, @Size(max = 50) String label) {
+    /** {@code gridCols}/{@code gridRows}: size of the layout editor grid (default 24 x 16). */
+    public record CreateFloorRequest(@NotNull @Min(-5) @Max(200) Integer floorNumber, @Size(max = 50) String label,
+                                     @Min(1) @Max(200) Integer gridCols, @Min(1) @Max(200) Integer gridRows) {
     }
 
-    public record FloorResponse(Long id, Long buildingId, int floorNumber, String label) {
-        static FloorResponse of(Floor f) {
-            return new FloorResponse(f.getId(), f.getBuilding().getId(), f.getFloorNumber(), f.getLabel());
+    public record FloorResponse(Long id, Long buildingId, int floorNumber, String label, int gridCols, int gridRows) {
+        public static FloorResponse of(Floor f) {
+            return new FloorResponse(f.getId(), f.getBuilding().getId(), f.getFloorNumber(), f.getLabel(), f.getGridCols(),
+                    f.getGridRows());
         }
     }
 

@@ -68,10 +68,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/refresh",
                                 "/api/v1/auth/password/forgot", "/api/v1/auth/password/reset").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/jwks").permitAll()
+                        // payment-provider callbacks: authenticated by their HMAC signature, not a JWT
+                        .requestMatchers(HttpMethod.POST, "/api/v1/payments/webhooks/*").permitAll()
                         .requestMatchers("/actuator/health/**", "/actuator/info", "/actuator/prometheus").permitAll()
                         .requestMatchers("/actuator/**").hasRole("SUPER_ADMIN")
                         .requestMatchers(PUBLIC_DOCS).permitAll()
                         .requestMatchers("/error").permitAll()
+                        // biometric devices: ADMS push identifies by serial number, bridges by X-Device-Key (service layer)
+                        .requestMatchers("/iclock/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/access/device-events", "/api/v1/access/verify").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))

@@ -3,7 +3,7 @@ package com.pgms.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import java.time.LocalDate;
+import com.pgms.support.BusinessDates;
 import java.util.List;
 import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.Test;
@@ -104,7 +104,7 @@ class NotificationPreferencesIT extends AbstractIntegrationTest {
 
     private long reserve(String token, long tenant, long bed) {
         Api.Response booking = api.post("/api/v1/bookings", token, "{\"tenantId\":" + tenant + ",\"bedId\":" + bed
-                + ",\"expectedCheckInDate\":\"" + LocalDate.now().plusDays(2) + "\",\"holdHours\":24}");
+                + ",\"expectedCheckInDate\":\"" + BusinessDates.today().plusDays(2) + "\",\"holdHours\":24}");
         assertThat(booking.status()).isEqualTo(201);
         return booking.id();
     }

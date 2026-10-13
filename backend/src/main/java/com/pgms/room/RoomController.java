@@ -1,6 +1,8 @@
 package com.pgms.room;
 
 import com.pgms.common.api.PageResponse;
+import com.pgms.room.RoomDtos.AddBedRequest;
+import com.pgms.room.RoomDtos.BedResponse;
 import com.pgms.room.RoomDtos.ChangeRoomStatusRequest;
 import com.pgms.room.RoomDtos.CreateRoomRequest;
 import com.pgms.room.RoomDtos.RoomResponse;
@@ -34,14 +36,17 @@ public class RoomController {
     private static final String READERS = "hasAnyRole('SUPER_ADMIN','PROPERTY_ADMIN','MANAGER','STAFF')";
 
     private final RoomService roomService;
+    private final BedService bedService;
 
-    public RoomController(RoomService roomService) {
+    public RoomController(RoomService roomService, BedService bedService) {
         this.roomService = roomService;
+        this.bedService = bedService;
     }
 
     @PostMapping
     @PreAuthorize(WRITERS)
-    @Operation(summary = "Create a room in a property; beds are generated from the capacity")
+    @Operation(summary = "Create a space (room, hall, kitchen ...) in a property, optionally placed on the floor grid; "
+            + "beds are generated from the capacity")
     public ResponseEntity<RoomResponse> create(@RequestParam Long propertyId, @Valid @RequestBody CreateRoomRequest request) {
         RoomResponse created = roomService.create(propertyId, request);
         return ResponseEntity.created(URI.create("/api/v1/rooms/" + created.id())).body(created);
@@ -53,8 +58,9 @@ public class RoomController {
                                              @RequestParam(required = false) RoomType roomType,
                                              @RequestParam(required = false) RoomStatus status,
                                              @RequestParam(required = false) Boolean airConditioned,
+                                             @RequestParam(required = false) SpaceKind spaceKind,
                                              Pageable pageable) {
-        return roomService.search(propertyId, roomType, status, airConditioned, pageable);
+        return roomService.search(propertyId, roomType, status, airConditioned, spaceKind, pageable);
     }
 
     @GetMapping("/{id}")
@@ -74,6 +80,14 @@ public class RoomController {
     @PreAuthorize(WRITERS)
     public RoomResponse changeStatus(@PathVariable Long id, @Valid @RequestBody ChangeRoomStatusRequest request) {
         return roomService.changeStatus(id, request.status());
+    }
+
+    @PostMapping("/{id}/beds")
+    @PreAuthorize(WRITERS)
+    @Operation(summary = "Add one bed to a ROOM/HALL/DORMITORY; capacity follows the active bed count")
+    public ResponseEntity<BedResponse> addBed(@PathVariable Long id, @Valid @RequestBody AddBedRequest request) {
+        BedResponse created = bedService.addBed(id, request);
+        return ResponseEntity.created(URI.create("/api/v1/beds/" + created.id())).body(created);
     }
 
     @DeleteMapping("/{id}")

@@ -25,3 +25,6 @@ run-output/
 
 # database dumps (contain personal data)
 backups/
+
+# agent worktrees
+.claude/worktrees/

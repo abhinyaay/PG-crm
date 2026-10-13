@@ -3,11 +3,11 @@ package com.pgms.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import com.pgms.support.BusinessDates;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +32,7 @@ class NotificationDeliveryIT extends AbstractIntegrationTest {
         String phone = fixtures.jdbc().queryForObject("SELECT phone FROM tenants WHERE id = ?", String.class, tenant);
 
         Api.Response booking = api.post("/api/v1/bookings", token, "{\"tenantId\":" + tenant + ",\"bedId\":"
-                + layout.bedIds().get(0) + ",\"expectedCheckInDate\":\"" + LocalDate.now().plusDays(3) + "\",\"holdHours\":24}");
+                + layout.bedIds().get(0) + ",\"expectedCheckInDate\":\"" + BusinessDates.today().plusDays(3) + "\",\"holdHours\":24}");
         assertThat(booking.status()).isEqualTo(201);
         String reference = booking.body().get("bookingReference").asText();
 

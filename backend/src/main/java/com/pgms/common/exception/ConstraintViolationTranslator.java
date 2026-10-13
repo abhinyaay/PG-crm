@@ -54,7 +54,33 @@ public final class ConstraintViolationTranslator {
             Map.entry("uk_notification_preferences",
                     new String[] {"CONCURRENT_MODIFICATION", "Preferences were changed concurrently. Please retry."}),
             Map.entry("organization_notification_settings_pkey",
-                    new String[] {"CONCURRENT_MODIFICATION", "Settings were changed concurrently. Please retry."}));
+                    new String[] {"CONCURRENT_MODIFICATION", "Settings were changed concurrently. Please retry."}),
+            Map.entry("uk_access_devices_serial",
+                    new String[] {"DEVICE_SERIAL_EXISTS", "A device with this serial number is already registered"}),
+            Map.entry("uk_access_credentials_active_pin",
+                    new String[] {"DEVICE_USER_ID_IN_USE", "This device user id is already in use at the property"}),
+            Map.entry("uk_access_events_device_punch",
+                    new String[] {"DUPLICATE_EVENT", "This device punch was already recorded"}),
+            Map.entry("access_settings_pkey",
+                    new String[] {"CONCURRENT_MODIFICATION", "Access settings were changed concurrently. Please retry."}),
+            Map.entry("access_member_limits_pkey",
+                    new String[] {"CONCURRENT_MODIFICATION", "The entry limit was changed concurrently. Please retry."}),
+            // access control (V7) above, collections (V5) below
+            // collections (V5)
+            Map.entry("property_billing_policies_pkey",
+                    new String[] {"CONCURRENT_MODIFICATION", "The billing policy was created concurrently. Please retry."}),
+            Map.entry("uk_late_fee_invoice_period", new String[] {"LATE_FEE_EXISTS", "Late fee already charged for this period"}),
+            Map.entry("uk_payment_claims_open_invoice",
+                    new String[] {"CLAIM_ALREADY_PENDING", "A payment claim for this invoice is already waiting for verification"}),
+            Map.entry("uk_payment_claims_utr",
+                    new String[] {"DUPLICATE_TRANSACTION", "This transaction reference was already submitted"}),
+            Map.entry("uk_payment_mandates_live_tenant",
+                    new String[] {"MANDATE_EXISTS", "An AutoPay mandate is already set up for this tenant"}),
+            Map.entry("uk_autopay_attempts_invoice_day",
+                    new String[] {"ATTEMPT_EXISTS", "An AutoPay debit was already attempted for this invoice today"}),
+            Map.entry("uk_autopay_attempts_invoice_no",
+                    new String[] {"ATTEMPT_EXISTS", "An AutoPay debit was already attempted for this invoice"}),
+            Map.entry("uk_payment_webhook_events", new String[] {"DUPLICATE_EVENT", "Webhook event already processed"}));
 
     private static final Pattern CONSTRAINT_IN_MESSAGE = Pattern.compile("constraint \"([A-Za-z0-9_]+)\"");
 

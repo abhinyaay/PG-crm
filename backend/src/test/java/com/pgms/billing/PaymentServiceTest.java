@@ -13,6 +13,7 @@ import com.pgms.billing.BillingDtos.IdempotentResult;
 import com.pgms.billing.BillingDtos.PaymentResponse;
 import com.pgms.billing.BillingDtos.RecordPaymentRequest;
 import com.pgms.common.exception.BadRequestException;
+import com.pgms.common.lookup.DisplayNames;
 import com.pgms.security.AccessGuard;
 import java.math.BigDecimal;
 import java.sql.SQLException;
@@ -33,7 +34,7 @@ class PaymentServiceTest {
     void setUp() {
         processor = mock(PaymentProcessor.class);
         service = new PaymentService(processor, mock(PaymentRepository.class), mock(RefundRepository.class),
-                mock(AccessGuard.class));
+                mock(AccessGuard.class), mock(DisplayNames.class));
     }
 
     @Test

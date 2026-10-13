@@ -56,14 +56,15 @@ public final class BillingDtos {
             BigDecimal amountPaid,
             BigDecimal balance,
             String currency,
-            List<LineItemResponse> lineItems) {
+            List<LineItemResponse> lineItems,
+            String tenantName) {
 
-        static InvoiceResponse of(Invoice i, boolean withLines) {
+        static InvoiceResponse of(Invoice i, boolean withLines, String tenantName) {
             return new InvoiceResponse(i.getId(), i.getInvoiceNumber(), i.getPropertyId(), i.getTenantId(), i.getAllocationId(),
                     i.getInvoiceType(), i.getBillingMonth(), i.getPeriodStart(), i.getPeriodEnd(), i.getIssueDate(),
                     i.getDueDate(), i.getStatus(), i.getSubtotal(), i.getDiscountTotal(), i.getTotalAmount(),
                     i.getAmountPaid(), i.balance(), i.getCurrency(),
-                    withLines ? i.getLineItems().stream().map(LineItemResponse::of).toList() : null);
+                    withLines ? i.getLineItems().stream().map(LineItemResponse::of).toList() : null, tenantName);
         }
     }
 
@@ -105,12 +106,13 @@ public final class BillingDtos {
             PaymentStatus status,
             String externalReference,
             Instant paidAt,
-            String notes) {
+            String notes,
+            String tenantName) {
 
-        static PaymentResponse of(Payment p) {
+        static PaymentResponse of(Payment p, String tenantName) {
             return new PaymentResponse(p.getId(), p.getReceiptNumber(), p.getPropertyId(), p.getTenantId(), p.getInvoiceId(),
                     p.getAmount(), p.getRefundedAmount(), p.getMethod(), p.getStatus(), p.getExternalReference(), p.getPaidAt(),
-                    p.getNotes());
+                    p.getNotes(), tenantName);
         }
     }
 

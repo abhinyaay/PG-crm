@@ -2,7 +2,7 @@ package com.pgms.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.LocalDate;
+import com.pgms.support.BusinessDates;
 import org.junit.jupiter.api.Test;
 
 /** Role checks (@PreAuthorize) and data-level scoping (AccessGuard) over real HTTP requests. */
@@ -59,7 +59,7 @@ class AccessControlIT extends AbstractIntegrationTest {
         assertThat(api.get("/api/v1/users", staffToken).status()).isEqualTo(403);
         // note: method security runs after body validation, so the probe uses a well-formed body
         assertThat(api.post("/api/v1/bookings", staffToken, "{\"tenantId\":1,\"bedId\":"
-                + layout.bedIds().get(0) + ",\"expectedCheckInDate\":\"" + LocalDate.now() + "\"}").status())
+                + layout.bedIds().get(0) + ",\"expectedCheckInDate\":\"" + BusinessDates.today() + "\"}").status())
                 .isEqualTo(403);
         assertThat(api.get("/api/v1/properties", tenantToken).status()).isEqualTo(403);
         assertThat(api.get("/api/v1/audit-logs", tenantToken).status()).isEqualTo(403);

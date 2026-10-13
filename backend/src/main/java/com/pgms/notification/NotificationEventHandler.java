@@ -3,6 +3,9 @@ package com.pgms.notification;
 import com.pgms.auth.AuthEvents;
 import com.pgms.billing.BillingEvents;
 import com.pgms.billing.InvoiceType;
+import com.pgms.billing.ReminderSchedule;
+import com.pgms.billing.autopay.AutopayEvents;
+import com.pgms.billing.autopay.MandateStatus;
 import com.pgms.booking.BookingEvents;
 import com.pgms.booking.BookingStatus;
 import com.pgms.common.domain.Priority;
@@ -144,6 +147,121 @@ public class NotificationEventHandler {
                 "Refund issued - " + e.refundReference(), "A refund of INR " + e.amount() + " has been issued.",
                 "REFUND", e.refundId())
                 .withParam("amt", amount(e.amount())).withParam("ref", e.refundReference()));
+    }
+
+    // ---- collections: late fees, overdue schedule, payment claims, AutoPay ----
+
+    @EventListener
+    public void on(BillingEvents.OverdueReminder e) {
+        String lateFee = e.lateFeeFrom() == null ? ""
+                : " A late fee applies from " + DATE.format(e.lateFeeFrom()) + " if it is still unpaid.";
+        notifications.notifyTenant(e.tenantId(), NotificationMessage.of(NotificationType.PAYMENT_OVERDUE,
+                "Payment overdue - " + e.invoiceNumber(),
+                "INR " + e.balance() + " on invoice " + e.invoiceNumber() + " was due on " + DATE.format(e.dueDate())
+                        + " and is " + e.daysOverdue() + (e.daysOverdue() == 1 ? " day" : " days") + " overdue." + lateFee,
+                "INVOICE", e.invoiceId())
+                .withDedupKey(ReminderSchedule.overdueDedupKey(e.invoiceId(), e.daysOverdue()))
+                .withParam("inv", e.invoiceNumber()).withParam("amt", amount(e.balance()))
+                .withParam("date", DATE.format(e.dueDate())).withParam("days", e.daysOverdue()));
+    }
+
+    @EventListener
+    public void on(BillingEvents.LateFeeApplied e) {
+        notifications.notifyTenant(e.tenantId(), NotificationMessage.of(NotificationType.LATE_FEE_APPLIED,
+                "Late fee added - " + e.invoiceNumber(),
+                "A late fee of INR " + e.amount() + " was added to invoice " + e.invoiceNumber() + ". New balance: INR "
+                        + e.newBalance() + ".", "INVOICE", e.invoiceId())
+                .withParam("fee", amount(e.amount())).withParam("inv", e.invoiceNumber()).withParam("bal", amount(e.newBalance())));
+    }
+
+    @EventListener
+    public void on(BillingEvents.LateFeeWaived e) {
+        notifications.notifyTenant(e.tenantId(), NotificationMessage.of(NotificationType.LATE_FEE_WAIVED,
+                "Late fee waived - " + e.invoiceNumber(),
+                "INR " + e.amount() + " of late fees on invoice " + e.invoiceNumber() + " has been waived. New balance: INR "
+                        + e.newBalance() + ".", "INVOICE", e.invoiceId())
+                .withParam("amt", amount(e.amount())).withParam("inv", e.invoiceNumber()));
+    }
+
+    @EventListener
+    public void on(BillingEvents.OverdueDigest e) {
+        List<User> recipients = e.includeAdmins() ? managersAndAdmins(e.organizationId(), e.propertyId()) : managers(e.propertyId());
+        notifications.notifyUsers(recipients, NotificationMessage.of(NotificationType.OVERDUE_DIGEST,
+                e.propertyName() + ": " + e.count() + " overdue, INR " + amount(e.total()),
+                e.count() + (e.count() == 1 ? " invoice is" : " invoices are") + " overdue at " + e.propertyName()
+                        + " (INR " + amount(e.total()) + " outstanding). Largest: " + e.top() + ".", "PROPERTY", e.propertyId())
+                .withDedupKey("OVERDUE_DIGEST:" + e.propertyId() + ":" + e.date()));
+    }
+
+    @EventListener
+    public void on(BillingEvents.PaymentClaimSubmitted e) {
+        String reference = e.utr() == null ? "" : " (UTR " + e.utr() + ")";
+        notifications.notifyUsers(managers(e.propertyId()), NotificationMessage.of(NotificationType.PAYMENT_CLAIM_SUBMITTED,
+                "Payment claim to verify - " + e.claimReference(),
+                e.tenantName() + " reports INR " + e.amount() + " paid via " + e.method() + reference + " for invoice "
+                        + e.invoiceNumber() + ". Please verify.", "PAYMENT_CLAIM", e.claimId()));
+    }
+
+    @EventListener
+    public void on(BillingEvents.PaymentClaimRejected e) {
+        String reference = e.utr() == null ? "" : " (UTR " + e.utr() + ")";
+        notifications.notifyTenant(e.tenantId(), NotificationMessage.of(NotificationType.PAYMENT_CLAIM_REJECTED,
+                "Payment claim not verified - " + e.claimReference(),
+                "Your payment claim of INR " + e.amount() + reference + " for invoice " + e.invoiceNumber()
+                        + " could not be verified: " + e.reason(), "PAYMENT_CLAIM", e.claimId())
+                .withParam("amt", amount(e.amount())).withParam("ref", e.utr() == null ? e.claimReference() : e.utr())
+                .withParam("reason", e.reason()));
+    }
+
+    @EventListener
+    public void on(BillingEvents.PaymentClaimsPending e) {
+        notifications.notifyUsers(managersAndAdmins(e.organizationId(), e.propertyId()), NotificationMessage.of(
+                NotificationType.PAYMENT_CLAIMS_PENDING, e.count() + " payment claims waiting at " + e.propertyName(),
+                e.count() + (e.count() == 1 ? " payment claim" : " payment claims") + " (INR " + amount(e.total())
+                        + ") at " + e.propertyName() + " have been waiting for verification for more than a day.",
+                "PROPERTY", e.propertyId())
+                .withDedupKey("PAYMENT_CLAIMS_PENDING:" + e.propertyId() + ":" + e.date()));
+    }
+
+    @EventListener
+    public void on(AutopayEvents.MandateStatusChanged e) {
+        String status = e.status().name().toLowerCase().replace('_', ' ');
+        String reason = e.reason() == null ? "" : " (" + e.reason() + ")";
+        NotificationMessage message = NotificationMessage.of(NotificationType.AUTOPAY_MANDATE_UPDATED,
+                "AutoPay " + status, "Your AutoPay mandate is now " + status + reason + ".", "PAYMENT_MANDATE", e.mandateId())
+                .withParam("status", status);
+        notifications.notifyTenant(e.tenantId(), message);
+        if (e.status() == MandateStatus.CANCELLED || e.status() == MandateStatus.ACTIVE) {
+            notifications.notifyUsers(managers(e.propertyId()), NotificationMessage.of(NotificationType.AUTOPAY_MANDATE_UPDATED,
+                    "AutoPay " + status + " for tenant #" + e.tenantId(), "Tenant #" + e.tenantId() + " AutoPay mandate is now "
+                            + status + ".", "PAYMENT_MANDATE", e.mandateId()));
+        }
+    }
+
+    @EventListener
+    public void on(AutopayEvents.DebitSucceeded e) {
+        notifications.notifyUsers(managers(e.propertyId()), NotificationMessage.of(NotificationType.AUTOPAY_DEBIT_SUCCEEDED,
+                "AutoPay collected INR " + amount(e.amount()), "AutoPay collected INR " + e.amount() + " for invoice "
+                        + e.invoiceNumber() + ".", "AUTOPAY_ATTEMPT", e.attemptId()));
+    }
+
+    @EventListener
+    public void on(AutopayEvents.DebitFailed e) {
+        String next = e.finalAttempt() ? " This was the last automatic attempt; please pay manually."
+                : " We will try again tomorrow.";
+        notifications.notifyTenant(e.tenantId(), NotificationMessage.of(NotificationType.AUTOPAY_DEBIT_FAILED,
+                "AutoPay failed - " + e.invoiceNumber(), "AutoPay could not collect INR " + e.amount() + " for invoice "
+                        + e.invoiceNumber() + " (" + e.reason() + ")." + next, "AUTOPAY_ATTEMPT", e.attemptId())
+                .withDedupKey("AUTOPAY_FAILED:" + e.attemptId())
+                .withParam("amt", amount(e.amount())).withParam("inv", e.invoiceNumber())
+                .withParam("next", e.finalAttempt() ? "Please pay manually." : "We will retry tomorrow."));
+        if (e.finalAttempt()) {
+            notifications.notifyUsers(managersAndAdmins(e.organizationId(), e.propertyId()), NotificationMessage.of(
+                    NotificationType.AUTOPAY_DEBIT_FAILED, "AutoPay gave up - " + e.invoiceNumber(),
+                    "All automatic attempts to collect INR " + e.amount() + " for invoice " + e.invoiceNumber()
+                            + " failed (" + e.reason() + "). Follow up with the tenant.", "AUTOPAY_ATTEMPT", e.attemptId())
+                    .withDedupKey("AUTOPAY_FAILED:" + e.attemptId()));
+        }
     }
 
     // ---- maintenance ----

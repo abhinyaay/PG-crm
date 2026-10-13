@@ -3,7 +3,6 @@ package com.pgms.billing;
 import com.pgms.booking.AllocationRepository;
 import com.pgms.common.exception.BusinessRuleException;
 import com.pgms.common.exception.ConstraintViolationTranslator;
-import com.pgms.config.AppProperties;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -11,11 +10,9 @@ import java.util.List;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Recurring billing work. ShedLock guarantees one execution per schedule across all replicas; on top of that every
@@ -29,17 +26,15 @@ public class BillingJobs {
     private final AllocationRepository allocationRepository;
     private final InvoiceRepository invoiceRepository;
     private final InvoiceService invoiceService;
-    private final ApplicationEventPublisher events;
-    private final AppProperties.Billing config;
+    private final CollectionsJobs collectionsJobs;
     private final Clock clock;
 
     public BillingJobs(AllocationRepository allocationRepository, InvoiceRepository invoiceRepository,
-                       InvoiceService invoiceService, ApplicationEventPublisher events, AppProperties properties, Clock clock) {
+                       InvoiceService invoiceService, CollectionsJobs collectionsJobs, Clock clock) {
         this.allocationRepository = allocationRepository;
         this.invoiceRepository = invoiceRepository;
         this.invoiceService = invoiceService;
-        this.events = events;
-        this.config = properties.billing();
+        this.collectionsJobs = collectionsJobs;
         this.clock = clock;
     }
 
@@ -100,15 +95,13 @@ public class BillingJobs {
         log.info("Marked {} invoices overdue", marked);
     }
 
-    /** "Rent due in N days" reminders; the notification dedup key prevents duplicates if this runs twice. */
+    /**
+     * "Rent due in N days" reminders, N from each property's billing policy (default
+     * {@code app.billing.due-reminder-days-before}); the notification dedup key prevents duplicates on a re-run.
+     */
     @Scheduled(cron = "${app.jobs.due-reminder-cron:0 0 9 * * *}", zone = "${app.business-timezone}")
     @SchedulerLock(name = "paymentDueReminders", lockAtMostFor = "PT15M", lockAtLeastFor = "PT1M")
-    @Transactional
     public void sendDueReminders() {
-        LocalDate dueDate = LocalDate.now(clock).plusDays(config.dueReminderDaysBefore());
-        List<Invoice> invoices = invoiceRepository.findOpenDueOn(dueDate);
-        invoices.forEach(i -> events.publishEvent(new BillingEvents.PaymentDue(i.getId(), i.getInvoiceNumber(),
-                i.getOrganizationId(), i.getTenantId(), i.balance(), i.getDueDate(), false)));
-        log.info("Queued {} payment-due reminders for {}", invoices.size(), dueDate);
+        collectionsJobs.runDueReminders(LocalDate.now(clock));
     }
 }

@@ -21,6 +21,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long>, JpaSpec
 
     List<Payment> findByInvoiceIdOrderByPaidAt(Long invoiceId);
 
+    /** A transaction reference (UTR) already recorded in the organization, whatever the method. */
+    boolean existsByOrganizationIdAndExternalReferenceIgnoreCase(Long organizationId, String externalReference);
+
     /** Deposit currently held for a tenant: deposit payments net of refunds. */
     @Query("""
             select coalesce(sum(p.amount - p.refundedAmount), 0) from Payment p, Invoice i

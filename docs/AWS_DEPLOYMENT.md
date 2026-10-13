@@ -4,8 +4,9 @@ Target: a production deployment in one region (e.g. `ap-south-1`, Mumbai) across
 
 **What is in the repository:** container images and Dockerfiles, ECS task definition templates
 (`infra/aws/ecs/*.json`), and the GitHub Actions pipeline that builds, scans, pushes to ECR and deploys to ECS.
-**What is not:** infrastructure-as-code for the VPC, RDS, ElastiCache, ALB and IAM. Those are specified here so they
-can be provisioned (Terraform/CDK is listed as future work in the README).
+**Infrastructure as code:** `infra/terraform/` (Terraform modules for network, security groups, RDS, ElastiCache,
+ECR, ECS, ALB + WAF, observability and the GitHub OIDC deploy role — see its README for bootstrap and apply order).
+It is validated offline (validate, fmt, tflint, checkov, plan tests) but has not yet been applied to a real account.
 
 ---
 

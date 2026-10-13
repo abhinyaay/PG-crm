@@ -10,6 +10,7 @@ import com.pgms.common.api.SortValidator;
 import com.pgms.common.exception.BadRequestException;
 import com.pgms.common.exception.ConstraintViolationTranslator;
 import com.pgms.common.exception.NotFoundException;
+import com.pgms.common.lookup.DisplayNames;
 import com.pgms.common.util.Hashing;
 import com.pgms.security.AccessGuard;
 import com.pgms.security.AccessScope;
@@ -47,24 +48,24 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final RefundRepository refundRepository;
     private final AccessGuard accessGuard;
+    private final DisplayNames displayNames;
 
     public PaymentService(PaymentProcessor processor, PaymentRepository paymentRepository, RefundRepository refundRepository,
-                          AccessGuard accessGuard) {
+                          AccessGuard accessGuard, DisplayNames displayNames) {
         this.processor = processor;
         this.paymentRepository = paymentRepository;
         this.refundRepository = refundRepository;
         this.accessGuard = accessGuard;
+        this.displayNames = displayNames;
     }
 
     public IdempotentResult<PaymentResponse> recordPayment(String idempotencyKey, RecordPaymentRequest request) {
         validateKey(idempotencyKey);
-        if (request.method() == PaymentMethod.DEPOSIT_ADJUSTMENT) {
-            throw new BadRequestException("INVALID_PAYMENT_METHOD",
-                    "DEPOSIT_ADJUSTMENT payments are created by the move-out settlement / deposits module only");
+        if (!request.method().isManual()) {
+            throw new BadRequestException("PAYMENT_METHOD_NOT_ALLOWED",
+                    request.method() + " payments are recorded by the system and cannot be entered manually");
         }
-        String fingerprint = Hashing.sha256Hex(String.join("|", "payment", String.valueOf(request.invoiceId()),
-                request.amount().setScale(2, RoundingMode.HALF_UP).toPlainString(), request.method().name(),
-                String.valueOf(request.externalReference()), String.valueOf(request.paidAt())));
+        String fingerprint = fingerprint(request);
         try {
             return processor.recordPayment(idempotencyKey, fingerprint, request);
         } catch (DataIntegrityViolationException e) {
@@ -75,6 +76,29 @@ public class PaymentService {
             Long organizationId = processor.organizationOfInvoice(request.invoiceId());
             return processor.findPaymentReplay(organizationId, idempotencyKey, fingerprint).orElseThrow(() -> e);
         }
+    }
+
+    /**
+     * Records a payment for a trusted server-side caller (AutoPay webhook / debit job): no user, so no access check, and
+     * the idempotency key may use the internal {@code source:id} format. Same replay semantics as {@link #recordPayment}.
+     */
+    public IdempotentResult<PaymentResponse> recordTrustedPayment(String idempotencyKey, RecordPaymentRequest request) {
+        String fingerprint = fingerprint(request);
+        try {
+            return processor.recordTrustedPayment(idempotencyKey, fingerprint, request);
+        } catch (DataIntegrityViolationException e) {
+            if (!ConstraintViolationTranslator.isConstraint(e, "uk_payments_idempotency")) {
+                throw e;
+            }
+            Long organizationId = processor.organizationOfInvoice(request.invoiceId());
+            return processor.findPaymentReplay(organizationId, idempotencyKey, fingerprint).orElseThrow(() -> e);
+        }
+    }
+
+    static String fingerprint(RecordPaymentRequest request) {
+        return Hashing.sha256Hex(String.join("|", "payment", String.valueOf(request.invoiceId()),
+                request.amount().setScale(2, RoundingMode.HALF_UP).toPlainString(), request.method().name(),
+                String.valueOf(request.externalReference()), String.valueOf(request.paidAt())));
     }
 
     public IdempotentResult<RefundResponse> recordRefund(Long paymentId, String idempotencyKey, RefundRequest request) {
@@ -94,7 +118,8 @@ public class PaymentService {
 
     @Transactional(readOnly = true)
     public PaymentResponse get(Long id) {
-        return PaymentResponse.of(loadAccessible(id));
+        Payment payment = loadAccessible(id);
+        return PaymentResponse.of(payment, displayNames.tenants(List.of(payment.getTenantId())).tenant(payment.getTenantId()));
     }
 
     @Transactional(readOnly = true)
@@ -114,7 +139,7 @@ public class PaymentService {
         } else {
             AccessScope scope = accessGuard.scopeFor(propertyId);
             if (scope.isEmpty()) {
-                return PageResponse.from(Page.<Payment>empty(page), PaymentResponse::of);
+                return PageResponse.from(Page.<Payment>empty(page), p -> PaymentResponse.of(p, null));
             }
             spec = scope.toSpecification();
             if (tenantId != null) {
@@ -133,7 +158,9 @@ public class PaymentService {
         if (to != null) {
             spec = spec.and((root, q, cb) -> cb.lessThan(root.get("paidAt"), to));
         }
-        return PageResponse.from(paymentRepository.findAll(spec, page), PaymentResponse::of);
+        Page<Payment> payments = paymentRepository.findAll(spec, page);
+        DisplayNames.Index names = displayNames.tenants(DisplayNames.ids(payments.getContent(), Payment::getTenantId));
+        return PageResponse.from(payments, p -> PaymentResponse.of(p, names.tenant(p.getTenantId())));
     }
 
     @Transactional(readOnly = true)

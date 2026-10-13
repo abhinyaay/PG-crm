@@ -8,12 +8,14 @@ import com.pgms.billing.BillingDtos.RefundRequest;
 import com.pgms.billing.BillingDtos.RefundResponse;
 import com.pgms.common.exception.BusinessRuleException;
 import com.pgms.common.exception.NotFoundException;
+import com.pgms.common.lookup.DisplayNames;
 import com.pgms.common.util.ReferenceNumberGenerator;
 import com.pgms.security.AccessGuard;
 import com.pgms.security.CurrentUserProvider;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.context.ApplicationEventPublisher;
@@ -36,12 +38,13 @@ class PaymentProcessor {
     private final AuditService auditService;
     private final ApplicationEventPublisher events;
     private final MeterRegistry meterRegistry;
+    private final DisplayNames displayNames;
     private final Clock clock;
 
     PaymentProcessor(InvoiceRepository invoiceRepository, PaymentRepository paymentRepository,
                      RefundRepository refundRepository, ReferenceNumberGenerator referenceNumbers, AccessGuard accessGuard,
                      CurrentUserProvider currentUserProvider, AuditService auditService, ApplicationEventPublisher events,
-                     MeterRegistry meterRegistry, Clock clock) {
+                     MeterRegistry meterRegistry, DisplayNames displayNames, Clock clock) {
         this.invoiceRepository = invoiceRepository;
         this.paymentRepository = paymentRepository;
         this.refundRepository = refundRepository;
@@ -51,6 +54,7 @@ class PaymentProcessor {
         this.auditService = auditService;
         this.events = events;
         this.meterRegistry = meterRegistry;
+        this.displayNames = displayNames;
         this.clock = clock;
     }
 
@@ -66,7 +70,23 @@ class PaymentProcessor {
         Invoice invoice = invoiceRepository.findByIdForUpdate(request.invoiceId())
                 .orElseThrow(() -> new NotFoundException("Invoice", request.invoiceId()));
         accessGuard.requirePropertyAccess(invoice.getPropertyId());
+        return record(invoice, idempotencyKey, fingerprint, request);
+    }
 
+    /**
+     * Same as {@link #recordPayment} without the caller access check, for server-side flows that have no user or have
+     * authorised the caller themselves (AutoPay webhooks/jobs, verified payment claims).
+     */
+    @Transactional
+    public IdempotentResult<PaymentResponse> recordTrustedPayment(String idempotencyKey, String fingerprint,
+                                                                  RecordPaymentRequest request) {
+        Invoice invoice = invoiceRepository.findByIdForUpdate(request.invoiceId())
+                .orElseThrow(() -> new NotFoundException("Invoice", request.invoiceId()));
+        return record(invoice, idempotencyKey, fingerprint, request);
+    }
+
+    private IdempotentResult<PaymentResponse> record(Invoice invoice, String idempotencyKey, String fingerprint,
+                                                     RecordPaymentRequest request) {
         Optional<IdempotentResult<PaymentResponse>> replay = findPaymentReplay(invoice.getOrganizationId(), idempotencyKey,
                 fingerprint);
         if (replay.isPresent()) {
@@ -86,7 +106,7 @@ class PaymentProcessor {
                 invoice.balance()));
         meterRegistry.counter("pgms.payments.recorded", "method", request.method().name()).increment();
         meterRegistry.summary("pgms.payments.amount").record(request.amount().doubleValue());
-        return new IdempotentResult<>(PaymentResponse.of(payment), false);
+        return new IdempotentResult<>(PaymentResponse.of(payment, tenantName(payment)), false);
     }
 
     @Transactional
@@ -122,7 +142,7 @@ class PaymentProcessor {
     public Optional<IdempotentResult<PaymentResponse>> findPaymentReplay(Long organizationId, String key, String fingerprint) {
         return paymentRepository.findByOrganizationIdAndIdempotencyKey(organizationId, key).map(existing -> {
             requireSameRequest(existing.getRequestFingerprint(), fingerprint);
-            return new IdempotentResult<>(PaymentResponse.of(existing), true);
+            return new IdempotentResult<>(PaymentResponse.of(existing, tenantName(existing)), true);
         });
     }
 
@@ -132,6 +152,10 @@ class PaymentProcessor {
             requireSameRequest(existing.getRequestFingerprint(), fingerprint);
             return new IdempotentResult<>(RefundResponse.of(existing), true);
         });
+    }
+
+    private String tenantName(Payment payment) {
+        return displayNames.tenants(List.of(payment.getTenantId())).tenant(payment.getTenantId());
     }
 
     @Transactional(readOnly = true)

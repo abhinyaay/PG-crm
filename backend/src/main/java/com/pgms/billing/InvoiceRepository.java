@@ -97,4 +97,14 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
                 com.pgms.billing.InvoiceStatus.OVERDUE)
             """)
     boolean hasOpenDepositInvoice(@Param("allocationId") Long allocationId);
+
+    /**
+     * Whether the resident currently occupies a bed. Late fees stop after the move-out: the settlement already applied
+     * the deposit and fixed the amount still payable.
+     */
+    @Query("""
+            select count(a) > 0 from Allocation a
+            where a.tenantId = :tenantId and a.status = com.pgms.booking.AllocationStatus.ACTIVE
+            """)
+    boolean tenantHasActiveStay(@Param("tenantId") Long tenantId);
 }

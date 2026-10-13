@@ -11,6 +11,7 @@ import com.pgms.common.exception.BadRequestException;
 import com.pgms.common.exception.BusinessRuleException;
 import com.pgms.common.exception.ForbiddenException;
 import com.pgms.common.exception.NotFoundException;
+import com.pgms.common.lookup.DisplayNames;
 import com.pgms.common.util.ReferenceNumberGenerator;
 import com.pgms.maintenance.MaintenanceDtos.CreateMaintenanceRequest;
 import com.pgms.maintenance.MaintenanceDtos.HistoryEntry;
@@ -59,13 +60,14 @@ public class MaintenanceService {
     private final AccessGuard accessGuard;
     private final AuditService auditService;
     private final ApplicationEventPublisher events;
+    private final DisplayNames displayNames;
     private final Clock clock;
 
     public MaintenanceService(MaintenanceRepository repository, MaintenanceStatusHistoryRepository historyRepository,
                               AllocationRepository allocationRepository, BedRepository bedRepository,
                               RoomRepository roomRepository, PropertyRepository propertyRepository,
                               UserRepository userRepository, ReferenceNumberGenerator referenceNumbers, AccessGuard accessGuard,
-                              AuditService auditService, ApplicationEventPublisher events, Clock clock) {
+                              AuditService auditService, ApplicationEventPublisher events, DisplayNames displayNames, Clock clock) {
         this.repository = repository;
         this.historyRepository = historyRepository;
         this.allocationRepository = allocationRepository;
@@ -77,6 +79,7 @@ public class MaintenanceService {
         this.accessGuard = accessGuard;
         this.auditService = auditService;
         this.events = events;
+        this.displayNames = displayNames;
         this.clock = clock;
     }
 
@@ -116,7 +119,7 @@ public class MaintenanceService {
         auditService.record(organizationId, "MAINTENANCE_CREATED", "MAINTENANCE", ticket.getId(),
                 Map.of("priority", request.priority().name(), "category", request.category().name()));
         publishStatus(ticket, null);
-        return MaintenanceResponse.of(ticket);
+        return respond(ticket);
     }
 
     @Transactional
@@ -135,7 +138,7 @@ public class MaintenanceService {
         auditService.record(ticket.getOrganizationId(), "MAINTENANCE_ASSIGNED", "MAINTENANCE", id,
                 Map.of("assigneeUserId", assigneeUserId));
         publishStatus(ticket, previous);
-        return MaintenanceResponse.of(ticket);
+        return respond(ticket);
     }
 
     /**
@@ -169,14 +172,14 @@ public class MaintenanceService {
         auditService.record(ticket.getOrganizationId(), "MAINTENANCE_STATUS_CHANGED", "MAINTENANCE", id,
                 Map.of("from", previous.name(), "to", target.name()));
         publishStatus(ticket, previous);
-        return MaintenanceResponse.of(ticket);
+        return respond(ticket);
     }
 
     @Transactional(readOnly = true)
     public MaintenanceResponse get(Long id) {
         MaintenanceRequest ticket = repository.findById(id).orElseThrow(() -> new NotFoundException("MaintenanceRequest", id));
         requireReadAccess(ticket, accessGuard.currentUser());
-        return MaintenanceResponse.of(ticket);
+        return respond(ticket);
     }
 
     @Transactional(readOnly = true)
@@ -198,7 +201,7 @@ public class MaintenanceService {
         } else {
             AccessScope scope = accessGuard.scopeFor(propertyId);
             if (scope.isEmpty()) {
-                return PageResponse.from(Page.<MaintenanceRequest>empty(page), MaintenanceResponse::of);
+                return PageResponse.from(Page.<MaintenanceRequest>empty(page), x -> MaintenanceResponse.of(x, DisplayNames.Index.EMPTY));
             }
             spec = scope.toSpecification();
         }
@@ -218,7 +221,9 @@ public class MaintenanceService {
         if (slaBreached != null) {
             spec = spec.and((root, q, cb) -> cb.equal(root.get("slaBreached"), slaBreached));
         }
-        return PageResponse.from(repository.findAll(spec, page), MaintenanceResponse::of);
+        Page<MaintenanceRequest> rows = repository.findAll(spec, page);
+        DisplayNames.Index names = names(rows.getContent());
+        return PageResponse.from(rows, x -> MaintenanceResponse.of(x, names));
     }
 
     /** Flags a ticket whose SLA lapsed (own transaction; called by {@link MaintenanceSlaJob}). */
@@ -254,5 +259,15 @@ public class MaintenanceService {
         events.publishEvent(new MaintenanceEvents.StatusChanged(ticket.getId(), ticket.getTicketNumber(),
                 ticket.getOrganizationId(), ticket.getPropertyId(), ticket.getTenantId(), ticket.getRaisedByUserId(),
                 ticket.getAssignedToUserId(), previous, ticket.getStatus(), ticket.getPriority()));
+    }
+
+    private MaintenanceResponse respond(MaintenanceRequest row) {
+        return MaintenanceResponse.of(row, names(List.of(row)));
+    }
+
+    /** Tenant and user (raised by / assignee) names for a page in at most two queries. */
+    private DisplayNames.Index names(List<MaintenanceRequest> rows) {
+        return displayNames.lookup(DisplayNames.ids(rows, MaintenanceRequest::getTenantId),
+                DisplayNames.ids(rows, MaintenanceRequest::getRaisedByUserId, MaintenanceRequest::getAssignedToUserId), Set.of());
     }
 }
