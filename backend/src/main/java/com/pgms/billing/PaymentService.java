@@ -58,9 +58,11 @@ public class PaymentService {
 
     public IdempotentResult<PaymentResponse> recordPayment(String idempotencyKey, RecordPaymentRequest request) {
         validateKey(idempotencyKey);
-        String fingerprint = Hashing.sha256Hex(String.join("|", "payment", String.valueOf(request.invoiceId()),
-                request.amount().setScale(2, RoundingMode.HALF_UP).toPlainString(), request.method().name(),
-                String.valueOf(request.externalReference()), String.valueOf(request.paidAt())));
+        if (!request.method().isManual()) {
+            throw new BadRequestException("PAYMENT_METHOD_NOT_ALLOWED",
+                    request.method() + " payments are recorded by the system and cannot be entered manually");
+        }
+        String fingerprint = fingerprint(request);
         try {
             return processor.recordPayment(idempotencyKey, fingerprint, request);
         } catch (DataIntegrityViolationException e) {
@@ -71,6 +73,29 @@ public class PaymentService {
             Long organizationId = processor.organizationOfInvoice(request.invoiceId());
             return processor.findPaymentReplay(organizationId, idempotencyKey, fingerprint).orElseThrow(() -> e);
         }
+    }
+
+    /**
+     * Records a payment for a trusted server-side caller (AutoPay webhook / debit job): no user, so no access check, and
+     * the idempotency key may use the internal {@code source:id} format. Same replay semantics as {@link #recordPayment}.
+     */
+    public IdempotentResult<PaymentResponse> recordTrustedPayment(String idempotencyKey, RecordPaymentRequest request) {
+        String fingerprint = fingerprint(request);
+        try {
+            return processor.recordTrustedPayment(idempotencyKey, fingerprint, request);
+        } catch (DataIntegrityViolationException e) {
+            if (!ConstraintViolationTranslator.isConstraint(e, "uk_payments_idempotency")) {
+                throw e;
+            }
+            Long organizationId = processor.organizationOfInvoice(request.invoiceId());
+            return processor.findPaymentReplay(organizationId, idempotencyKey, fingerprint).orElseThrow(() -> e);
+        }
+    }
+
+    static String fingerprint(RecordPaymentRequest request) {
+        return Hashing.sha256Hex(String.join("|", "payment", String.valueOf(request.invoiceId()),
+                request.amount().setScale(2, RoundingMode.HALF_UP).toPlainString(), request.method().name(),
+                String.valueOf(request.externalReference()), String.valueOf(request.paidAt())));
     }
 
     public IdempotentResult<RefundResponse> recordRefund(Long paymentId, String idempotencyKey, RefundRequest request) {

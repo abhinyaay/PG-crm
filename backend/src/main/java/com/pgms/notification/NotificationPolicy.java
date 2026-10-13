@@ -7,19 +7,28 @@ import static com.pgms.notification.ChannelRule.NONE;
 import static com.pgms.notification.ChannelRule.OFF;
 import static com.pgms.notification.ChannelRule.ON;
 import static com.pgms.notification.ChannelRule.ON_IF_IMPORTANT;
+import static com.pgms.notification.NotificationType.AUTOPAY_DEBIT_FAILED;
+import static com.pgms.notification.NotificationType.AUTOPAY_DEBIT_SUCCEEDED;
+import static com.pgms.notification.NotificationType.AUTOPAY_MANDATE_UPDATED;
 import static com.pgms.notification.NotificationType.BOOKING_CONFIRMED;
 import static com.pgms.notification.NotificationType.BOOKING_RELEASED;
 import static com.pgms.notification.NotificationType.COMPLAINT_ESCALATED;
 import static com.pgms.notification.NotificationType.COMPLAINT_UPDATE;
 import static com.pgms.notification.NotificationType.INVOICE_ISSUED;
+import static com.pgms.notification.NotificationType.LATE_FEE_APPLIED;
+import static com.pgms.notification.NotificationType.LATE_FEE_WAIVED;
 import static com.pgms.notification.NotificationType.MAINTENANCE_ASSIGNED;
 import static com.pgms.notification.NotificationType.MAINTENANCE_CREATED;
 import static com.pgms.notification.NotificationType.MAINTENANCE_SLA_BREACH;
 import static com.pgms.notification.NotificationType.MAINTENANCE_UPDATE;
 import static com.pgms.notification.NotificationType.MOVE_IN;
 import static com.pgms.notification.NotificationType.MOVE_OUT;
+import static com.pgms.notification.NotificationType.OVERDUE_DIGEST;
 import static com.pgms.notification.NotificationType.PASSWORD_CHANGED;
 import static com.pgms.notification.NotificationType.PASSWORD_RESET_OTP;
+import static com.pgms.notification.NotificationType.PAYMENT_CLAIMS_PENDING;
+import static com.pgms.notification.NotificationType.PAYMENT_CLAIM_REJECTED;
+import static com.pgms.notification.NotificationType.PAYMENT_CLAIM_SUBMITTED;
 import static com.pgms.notification.NotificationType.PAYMENT_DUE;
 import static com.pgms.notification.NotificationType.PAYMENT_OVERDUE;
 import static com.pgms.notification.NotificationType.PAYMENT_RECEIVED;
@@ -97,6 +106,20 @@ public class NotificationPolicy {
         row(PASSWORD_RESET_OTP,       STAFF,     NONE,      MANDATORY,         MANDATORY);
         row(PASSWORD_CHANGED,         RESIDENT,  ON,        MANDATORY,         OFF);
         row(PASSWORD_CHANGED,         STAFF,     ON,        MANDATORY,         OFF);
+        // collections (late fees, claims, AutoPay)
+        row(LATE_FEE_APPLIED,         RESIDENT,  ON,        ON,                ON);
+        row(LATE_FEE_WAIVED,          RESIDENT,  ON,        ON,                OFF);
+        row(OVERDUE_DIGEST,           STAFF,     ON,        ON,                NONE);
+        row(PAYMENT_CLAIM_SUBMITTED,  STAFF,     ON,        OFF,               NONE);
+        row(PAYMENT_CLAIM_REJECTED,   RESIDENT,  ON,        ON,                ON);
+        row(PAYMENT_CLAIMS_PENDING,   STAFF,     ON,        ON,                NONE);
+        row(AUTOPAY_MANDATE_UPDATED,  RESIDENT,  ON,        ON,                OFF);
+        row(AUTOPAY_MANDATE_UPDATED,  STAFF,     ON,        OFF,               NONE);
+        // the resident already gets the (mandatory) PAYMENT_RECEIVED; managers may opt in to per-debit notices
+        row(AUTOPAY_DEBIT_SUCCEEDED,  STAFF,     OFF,       OFF,               NONE);
+        row(AUTOPAY_DEBIT_FAILED,     RESIDENT,  ON,        ON,                ON);
+        // managers hear about the final failed attempt only
+        row(AUTOPAY_DEBIT_FAILED,     STAFF,     ON,        ON,                NONE);
     }
 
     /** The three channel cells of one matrix row. */

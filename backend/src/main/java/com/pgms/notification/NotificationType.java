@@ -26,5 +26,18 @@ public enum NotificationType {
     COMPLAINT_ESCALATED,
     PORTAL_ACCOUNT_CREATED,
     PASSWORD_RESET_OTP,
-    PASSWORD_CHANGED
+    PASSWORD_CHANGED,
+    /** Late fee charged on an invoice, to the resident. */
+    LATE_FEE_APPLIED,
+    LATE_FEE_WAIVED,
+    /** Daily per-property overdue summary, to managers (admins weekly). */
+    OVERDUE_DIGEST,
+    /** A resident reported an outside payment, to the property's managers. */
+    PAYMENT_CLAIM_SUBMITTED,
+    PAYMENT_CLAIM_REJECTED,
+    /** Claims waiting longer than the SLA, to managers and admins. */
+    PAYMENT_CLAIMS_PENDING,
+    AUTOPAY_MANDATE_UPDATED,
+    AUTOPAY_DEBIT_SUCCEEDED,
+    AUTOPAY_DEBIT_FAILED
 }
