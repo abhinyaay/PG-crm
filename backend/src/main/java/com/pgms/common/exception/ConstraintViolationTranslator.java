@@ -45,7 +45,17 @@ public final class ConstraintViolationTranslator {
             Map.entry("uk_notification_preferences",
                     new String[] {"CONCURRENT_MODIFICATION", "Preferences were changed concurrently. Please retry."}),
             Map.entry("organization_notification_settings_pkey",
-                    new String[] {"CONCURRENT_MODIFICATION", "Settings were changed concurrently. Please retry."}));
+                    new String[] {"CONCURRENT_MODIFICATION", "Settings were changed concurrently. Please retry."}),
+            Map.entry("uk_access_devices_serial",
+                    new String[] {"DEVICE_SERIAL_EXISTS", "A device with this serial number is already registered"}),
+            Map.entry("uk_access_credentials_active_pin",
+                    new String[] {"DEVICE_USER_ID_IN_USE", "This device user id is already in use at the property"}),
+            Map.entry("uk_access_events_device_punch",
+                    new String[] {"DUPLICATE_EVENT", "This device punch was already recorded"}),
+            Map.entry("access_settings_pkey",
+                    new String[] {"CONCURRENT_MODIFICATION", "Access settings were changed concurrently. Please retry."}),
+            Map.entry("access_member_limits_pkey",
+                    new String[] {"CONCURRENT_MODIFICATION", "The entry limit was changed concurrently. Please retry."}));
 
     private static final Pattern CONSTRAINT_IN_MESSAGE = Pattern.compile("constraint \"([A-Za-z0-9_]+)\"");
 

@@ -72,6 +72,9 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/**").hasRole("SUPER_ADMIN")
                         .requestMatchers(PUBLIC_DOCS).permitAll()
                         .requestMatchers("/error").permitAll()
+                        // biometric devices: ADMS push identifies by serial number, bridges by X-Device-Key (service layer)
+                        .requestMatchers("/iclock/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/access/device-events", "/api/v1/access/verify").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
