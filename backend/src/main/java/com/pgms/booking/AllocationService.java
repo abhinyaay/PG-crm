@@ -4,6 +4,8 @@ import com.pgms.audit.AuditService;
 import com.pgms.billing.BillingDtos.InvoiceSummary;
 import com.pgms.billing.BillingDtos.SettlementSummary;
 import com.pgms.billing.InvoiceService;
+import com.pgms.billing.InvoiceService.SettlementCharge;
+import com.pgms.billing.LineItemType;
 import com.pgms.booking.BookingDtos.AllocationResponse;
 import com.pgms.booking.BookingDtos.CheckInRequest;
 import com.pgms.booking.BookingDtos.CheckInResponse;
@@ -68,13 +70,14 @@ public class AllocationService {
     private final AuditService auditService;
     private final ApplicationEventPublisher events;
     private final MeterRegistry meterRegistry;
+    private final CheckOutSettlement checkOutSettlement;
     private final Clock clock;
 
     public AllocationService(AllocationRepository allocationRepository, BookingRepository bookingRepository,
                              BedRepository bedRepository, TenantRepository tenantRepository, TenantService tenantService,
                              BookingService bookingService, InvoiceService invoiceService, AccessGuard accessGuard,
                              AuditService auditService, ApplicationEventPublisher events, MeterRegistry meterRegistry,
-                             Clock clock) {
+                             CheckOutSettlement checkOutSettlement, Clock clock) {
         this.allocationRepository = allocationRepository;
         this.bookingRepository = bookingRepository;
         this.bedRepository = bedRepository;
@@ -86,6 +89,7 @@ public class AllocationService {
         this.auditService = auditService;
         this.events = events;
         this.meterRegistry = meterRegistry;
+        this.checkOutSettlement = checkOutSettlement;
         this.clock = clock;
     }
 
@@ -154,31 +158,50 @@ public class AllocationService {
         return new CheckInResponse(AllocationResponse.of(allocation), invoices);
     }
 
+    /**
+     * Legacy one-step check-out: ends the stay and settles it with the given deductions. The settlement is persisted
+     * (a SETTLED move-out case, deposit applied to dues, refund due recorded) exactly like the move-out workflow, but
+     * notice-shortfall and lock-in charges are not applied.
+     */
     @Transactional
     public CheckOutResponse checkOut(Long allocationId, CheckOutRequest request) {
+        List<SettlementCharge> charges = request.deductions() == null ? List.of() : request.deductions().stream()
+                .map(d -> new SettlementCharge(LineItemType.DEDUCTION, d.description(), d.amount())).toList();
+        return performCheckOut(allocationId, request.checkOutDate(), request.sendBedToMaintenance(), charges, null);
+    }
+
+    /**
+     * Ends the allocation, frees the bed, moves the tenant out, closes invoices for periods not stayed and settles the
+     * money through {@link CheckOutSettlement}. Lock order: tenant -> allocation -> bed (the move-out module locks
+     * the move-out case between tenant and allocation before calling this).
+     */
+    @Transactional
+    public CheckOutResponse performCheckOut(Long allocationId, LocalDate checkOutDate, boolean sendBedToMaintenance,
+                                            List<SettlementCharge> charges, Long moveOutId) {
         LocalDate today = LocalDate.now(clock);
-        requireDateWindow(request.checkOutDate(), today, "Check-out");
+        requireDateWindow(checkOutDate, today, "Check-out");
         Tenant tenant = lockTenantOfAllocation(allocationId);
         Allocation allocation = lockActiveAllocation(allocationId);
 
-        allocation.end(request.checkOutDate(), EndReason.CHECK_OUT);
+        allocation.end(checkOutDate, EndReason.CHECK_OUT);
         Bed bed = bedRepository.findByIdForUpdate(allocation.getBedId())
                 .orElseThrow(() -> new NotFoundException("Bed", allocation.getBedId()));
         bed.vacate();
-        if (request.sendBedToMaintenance()) {
+        if (sendBedToMaintenance) {
             bed.startMaintenance();
         }
-        tenant.moveOut(request.checkOutDate());
-        int invoicesClosed = invoiceService.closeOutAfterMoveOut(tenant.getId(), request.checkOutDate());
-        SettlementSummary settlement = invoiceService.settlement(tenant, request.deductions());
+        tenant.moveOut(checkOutDate);
+        allocationRepository.flush();
+        int invoicesClosed = invoiceService.closeOutAfterMoveOut(tenant.getId(), checkOutDate);
+        SettlementSummary settlement = checkOutSettlement.settle(tenant, allocation, checkOutDate, charges, moveOutId);
 
         auditService.record(allocation.getOrganizationId(), "TENANT_CHECKED_OUT", "ALLOCATION", allocationId, Map.of(
-                "checkOutDate", request.checkOutDate().toString(),
+                "checkOutDate", checkOutDate.toString(),
                 "invoicesClosed", invoicesClosed,
                 "refundDue", settlement.refundDue(),
                 "amountPayableByTenant", settlement.amountPayableByTenant()));
         events.publishEvent(new BookingEvents.TenantCheckedOut(allocationId, allocation.getOrganizationId(),
-                allocation.getPropertyId(), tenant.getId(), bed.getId(), request.checkOutDate()));
+                allocation.getPropertyId(), tenant.getId(), bed.getId(), checkOutDate));
         meterRegistry.counter("pgms.allocations.checked_out").increment();
         return new CheckOutResponse(AllocationResponse.of(allocation), settlement);
     }
@@ -215,10 +238,17 @@ public class AllocationService {
         allocationRepository.saveAndFlush(current);
 
         BigDecimal rent = request.newMonthlyRent() != null ? request.newMonthlyRent() : targetBed.getRoom().getMonthlyRent();
+        BigDecimal deposit = request.newSecurityDeposit() != null ? request.newSecurityDeposit() : current.getSecurityDeposit();
         Allocation next = new Allocation(current.getOrganizationId(), targetProperty.getId(), tenant.getId(), targetBed.getId(),
-                null, current.getId(), request.transferDate(), rent, current.getSecurityDeposit());
+                null, current.getId(), request.transferDate(), rent, deposit);
         next.inheritNotice(current);
         allocationRepository.saveAndFlush(next);
+        BigDecimal topUp = deposit.subtract(current.getSecurityDeposit());
+        if (topUp.signum() > 0) {
+            // deposit difference of a costlier room: billed now as a further deposit invoice on the new allocation
+            invoiceService.issueDepositTopUp(next, topUp, "Deposit top-up after room transfer ("
+                    + current.getSecurityDeposit().toPlainString() + " to " + deposit.toPlainString() + ")");
+        }
         if (!Objects.equals(tenant.getPropertyId(), targetProperty.getId())) {
             tenant.relocateTo(targetProperty.getId());
         }
@@ -244,6 +274,8 @@ public class AllocationService {
         tenant.giveNotice();
         auditService.record(allocation.getOrganizationId(), "NOTICE_GIVEN", "ALLOCATION", allocationId,
                 Map.of("expectedCheckOutDate", expectedCheckOutDate.toString()));
+        events.publishEvent(new BookingEvents.NoticeGiven(allocationId, allocation.getOrganizationId(),
+                allocation.getPropertyId(), tenant.getId(), today, expectedCheckOutDate));
         return AllocationResponse.of(allocation);
     }
 
@@ -254,6 +286,8 @@ public class AllocationService {
         allocation.clearNotice();
         tenant.withdrawNotice();
         auditService.record(allocation.getOrganizationId(), "NOTICE_WITHDRAWN", "ALLOCATION", allocationId);
+        events.publishEvent(new BookingEvents.NoticeWithdrawn(allocationId, allocation.getOrganizationId(),
+                allocation.getPropertyId(), tenant.getId()));
         return AllocationResponse.of(allocation);
     }
 

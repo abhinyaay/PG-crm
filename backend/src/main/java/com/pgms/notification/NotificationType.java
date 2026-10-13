@@ -26,5 +26,14 @@ public enum NotificationType {
     COMPLAINT_ESCALATED,
     PORTAL_ACCOUNT_CREATED,
     PASSWORD_RESET_OTP,
-    PASSWORD_CHANGED
+    PASSWORD_CHANGED,
+    /** Notice given (acknowledgement to the resident, heads-up to managers). */
+    MOVE_OUT_REQUESTED,
+    MOVE_OUT_WITHDRAWN,
+    /** Final move-out settlement statement, to the resident. */
+    SETTLEMENT_FINALIZED,
+    /** Deposit refund paid out, to the resident. */
+    DEPOSIT_REFUND_ISSUED,
+    /** Deposit refund past its due-by date, to the owners (property admins). */
+    DEPOSIT_REFUND_OVERDUE
 }

@@ -23,6 +23,9 @@ public interface AllocationRepository extends JpaRepository<Allocation, Long>, J
 
     Optional<Allocation> findByBedIdAndStatus(Long bedId, AllocationStatus status);
 
+    /** The allocation a transfer created from {@code previousAllocationId} (stay chains are linear). */
+    Optional<Allocation> findFirstByPreviousAllocationIdOrderByIdDesc(Long previousAllocationId);
+
     List<Allocation> findByTenantIdOrderByStartDateDesc(Long tenantId);
 
     List<Allocation> findByBedIdOrderByStartDateDesc(Long bedId);

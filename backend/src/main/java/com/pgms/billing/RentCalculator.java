@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 
 /** Pure rent arithmetic, kept free of I/O so it is trivially unit-testable. */
 public final class RentCalculator {
@@ -30,5 +31,22 @@ public final class RentCalculator {
     public static LocalDate dueDate(YearMonth month, int rentDueDay, LocalDate issueDate) {
         LocalDate due = month.atDay(Math.min(rentDueDay, month.lengthOfMonth()));
         return due.isBefore(issueDate) ? issueDate : due;
+    }
+
+    /**
+     * Credit for the unused tail of a billed period when the resident leaves on {@code moveOutDate} (exclusive end of
+     * the stay): {@code billed x unusedDays / periodDays}, rounded half-up to paise and never more than {@code billed}.
+     * Proportional to what the invoice actually charged, so a prorated move-in month is credited consistently.
+     */
+    public static BigDecimal unusedRentCredit(BigDecimal billed, LocalDate periodStart, LocalDate periodEnd,
+                                              LocalDate moveOutDate) {
+        if (billed.signum() <= 0 || moveOutDate.isAfter(periodEnd)) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        LocalDate firstUnused = moveOutDate.isBefore(periodStart) ? periodStart : moveOutDate;
+        long periodDays = ChronoUnit.DAYS.between(periodStart, periodEnd) + 1;
+        long unusedDays = ChronoUnit.DAYS.between(firstUnused, periodEnd) + 1;
+        return billed.multiply(BigDecimal.valueOf(unusedDays))
+                .divide(BigDecimal.valueOf(periodDays), 2, RoundingMode.HALF_UP).min(billed);
     }
 }

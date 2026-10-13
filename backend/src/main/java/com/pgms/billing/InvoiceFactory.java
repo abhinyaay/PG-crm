@@ -40,6 +40,23 @@ public class InvoiceFactory {
         return Optional.of(invoice);
     }
 
+    /** A further deposit invoice for an existing stay (top-up after a transfer to a costlier room, deposit raise). */
+    public Invoice depositTopUpInvoice(Allocation allocation, BigDecimal amount, String description, LocalDate issueDate,
+                                       Long userId) {
+        Invoice invoice = new Invoice(referenceNumbers.next(ReferenceNumberGenerator.Kind.INVOICE), allocation.getOrganizationId(),
+                allocation.getPropertyId(), allocation.getTenantId(), allocation.getId(), InvoiceType.SECURITY_DEPOSIT,
+                null, null, null, issueDate, issueDate, currency);
+        invoice.addCharge(LineItemType.SECURITY_DEPOSIT, description, amount, clock.instant(), userId, LocalDate.now(clock));
+        return invoice;
+    }
+
+    /** Empty SETTLEMENT invoice (due on issue) that collects move-out charges and deposit deductions as lines. */
+    public Invoice settlementInvoice(Allocation allocation, LocalDate issueDate) {
+        return new Invoice(referenceNumbers.next(ReferenceNumberGenerator.Kind.INVOICE), allocation.getOrganizationId(),
+                allocation.getPropertyId(), allocation.getTenantId(), allocation.getId(), InvoiceType.SETTLEMENT,
+                null, null, null, issueDate, issueDate, currency);
+    }
+
     /**
      * Rent invoice for {@code month}. When the allocation starts inside the month (move-in), the amount is
      * prorated from the start date; otherwise the full monthly rent is billed.
@@ -47,6 +64,18 @@ public class InvoiceFactory {
     public Optional<Invoice> rentInvoice(Allocation allocation, YearMonth month, int rentDueDay, LocalDate issueDate,
                                          Long userId) {
         LocalDate periodStart = allocation.getStartDate().isAfter(month.atDay(1)) ? allocation.getStartDate() : month.atDay(1);
+        return rentInvoice(allocation, month, rentDueDay, issueDate, userId, periodStart);
+    }
+
+    /**
+     * Rent invoice for {@code month} billed from {@code periodStart} (inclusive) to the end of the month - used when
+     * part of the month is already covered by another live rent invoice of the same resident (re-check-in).
+     */
+    public Optional<Invoice> rentInvoice(Allocation allocation, YearMonth month, int rentDueDay, LocalDate issueDate,
+                                         Long userId, LocalDate periodStart) {
+        if (!YearMonth.from(periodStart).equals(month)) {
+            return Optional.empty();
+        }
         BigDecimal amount = RentCalculator.proratedRent(allocation.getMonthlyRent(), periodStart);
         if (amount.signum() <= 0) {
             return Optional.empty();

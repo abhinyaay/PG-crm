@@ -102,6 +102,10 @@ class PaymentProcessor {
             return replay.get();
         }
 
+        if (payment.getMethod() == PaymentMethod.DEPOSIT_ADJUSTMENT) {
+            throw new BusinessRuleException("REFUND_NOT_ALLOWED",
+                    "A deposit adjustment moved no money and cannot be refunded; adjust the deposit from the Deposits tab");
+        }
         payment.refund(request.amount());
         Refund refund = refundRepository.saveAndFlush(new Refund(referenceNumbers.next(ReferenceNumberGenerator.Kind.REFUND),
                 payment, request.amount(), request.reason(), idempotencyKey, fingerprint, clock.instant(),

@@ -130,14 +130,24 @@ public final class BillingDtos {
                             @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal amount) {
     }
 
-    /** Move-out financial summary: what is held, what is owed, and what should be refunded or collected. */
+    /**
+     * Move-out financial summary, persisted on the move-out case: deposit held for this stay, dues open before the
+     * settlement, deductions charged (settlement invoice), how much of the deposit / rent credit was applied to dues
+     * and deductions, and what remains to be refunded ({@code refundDue}, by {@code refundDueBy}) or collected.
+     */
     public record SettlementSummary(
             BigDecimal depositHeld,
             BigDecimal outstandingDues,
             BigDecimal deductions,
             BigDecimal refundDue,
             BigDecimal amountPayableByTenant,
-            @Valid List<Deduction> deductionItems) {
+            @Valid List<Deduction> deductionItems,
+            BigDecimal duesAdjusted,
+            BigDecimal rentCredit,
+            LocalDate refundDueBy,
+            Long moveOutId,
+            Long settlementInvoiceId,
+            Long depositAccountId) {
     }
 
     public record GenerationResult(LocalDate billingMonth, int generated, int skipped, int failed) {

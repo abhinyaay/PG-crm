@@ -58,6 +58,10 @@ public class PaymentService {
 
     public IdempotentResult<PaymentResponse> recordPayment(String idempotencyKey, RecordPaymentRequest request) {
         validateKey(idempotencyKey);
+        if (request.method() == PaymentMethod.DEPOSIT_ADJUSTMENT) {
+            throw new BadRequestException("INVALID_PAYMENT_METHOD",
+                    "DEPOSIT_ADJUSTMENT payments are created by the move-out settlement / deposits module only");
+        }
         String fingerprint = Hashing.sha256Hex(String.join("|", "payment", String.valueOf(request.invoiceId()),
                 request.amount().setScale(2, RoundingMode.HALF_UP).toPlainString(), request.method().name(),
                 String.valueOf(request.externalReference()), String.valueOf(request.paidAt())));

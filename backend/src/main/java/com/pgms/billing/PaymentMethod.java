@@ -5,5 +5,8 @@ public enum PaymentMethod {
     UPI,
     CARD,
     BANK_TRANSFER,
-    CHEQUE
+    CHEQUE,
+    AUTOPAY,
+    /** Internal: dues paid from the resident's security deposit. Never accepted from the payments API. */
+    DEPOSIT_ADJUSTMENT
 }
