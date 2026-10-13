@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- build: compile and package (tests run in CI, not in the image build) ----
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-26 AS build
 WORKDIR /workspace
 COPY pom.xml checkstyle.xml ./
 # dependency layer is cached until pom.xml changes
